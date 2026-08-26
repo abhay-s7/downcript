@@ -2,13 +2,18 @@
 
 import { MetaAdGroup, MetaCreativeJob } from "@/app/lib/metaJobs";
 
+const BUTTON_BASE =
+  "inline-flex items-center justify-center h-9 px-4 rounded-md text-sm font-medium transition-colors whitespace-nowrap";
+const PRIMARY_BUTTON = `${BUTTON_BASE} bg-blue-600 text-white hover:bg-blue-700 disabled:bg-gray-200 disabled:text-gray-400 disabled:cursor-not-allowed`;
+const SECONDARY_BUTTON = `${BUTTON_BASE} border border-gray-300 bg-white text-gray-700 hover:bg-gray-50 hover:border-gray-400 disabled:bg-white disabled:border-gray-200 disabled:text-gray-300 disabled:cursor-not-allowed disabled:hover:bg-white disabled:hover:border-gray-200`;
+
 function CreativeRow({
   group,
   creative,
   transcriptFormatsSelected,
   onDownload,
   onCancel,
-  onGenerateTranscript,
+  onTranscriptOnly,
   onDownloadAndTranscript,
 }: {
   group: MetaAdGroup;
@@ -16,88 +21,102 @@ function CreativeRow({
   transcriptFormatsSelected: boolean;
   onDownload: () => void;
   onCancel: () => void;
-  onGenerateTranscript: () => void;
+  onTranscriptOnly: () => void;
   onDownloadAndTranscript: () => void;
 }) {
   const label = group.creatives.length > 1 ? `Creative ${String(creative.index).padStart(2, "0")}` : null;
+  const formatHint = transcriptFormatsSelected ? undefined : "Select at least one transcript format above";
+
+  // A video creative's three actions stay available together whenever
+  // nothing is actively running for it -- rather than the button set
+  // changing shape as status/transcriptStatus progress -- with completion
+  // shown as a badge alongside them instead of replacing them, so e.g.
+  // "Transcript Only" after an already-completed download still works
+  // (it reuses the kept file; see runMetaTranscribeJob).
+  const showVideoActions =
+    creative.kind === "video" &&
+    creative.status !== "pending" &&
+    creative.status !== "processing" &&
+    creative.transcriptStatus !== "processing";
 
   return (
-    <div className="flex items-center gap-3 py-2.5 border-t border-gray-100">
-      <span className="text-xs font-medium text-gray-500 bg-gray-100 rounded px-1.5 py-0.5 w-14 text-center flex-shrink-0">
-        {creative.kind === "video" ? "Video" : "Image"}
-      </span>
-      {label && <span className="text-sm text-gray-400 flex-shrink-0">{label}</span>}
-      <span className="text-sm text-gray-700 truncate flex-1">{creative.fileName}</span>
+    <div className="py-2.5 border-t border-gray-100">
+      <div className="flex items-center gap-3">
+        <span className="text-xs font-medium text-gray-500 bg-gray-100 rounded px-1.5 py-0.5 w-14 text-center flex-shrink-0">
+          {creative.kind === "video" ? "Video" : "Image"}
+        </span>
+        {label && <span className="text-sm text-gray-400 flex-shrink-0">{label}</span>}
+        <span className="text-sm text-gray-700 truncate flex-1">{creative.fileName}</span>
 
-      <div className="flex items-center gap-2 flex-shrink-0">
-        {creative.status === "ready" && (
-          <>
-            <button onClick={onDownload} className="text-sm text-blue-600 hover:underline">
-              {creative.kind === "video" ? "Download Video" : "Download"}
-            </button>
-            {creative.kind === "video" && (
-              <button
-                onClick={onDownloadAndTranscript}
-                disabled={!transcriptFormatsSelected}
-                title={transcriptFormatsSelected ? undefined : "Select at least one transcript format above"}
-                className="text-sm text-blue-600 hover:underline disabled:text-gray-300 disabled:no-underline disabled:cursor-not-allowed"
-              >
-                Download Video + Transcript
-              </button>
-            )}
-          </>
-        )}
-        {creative.status === "pending" && <span className="text-sm text-gray-400">Queued...</span>}
-        {creative.status === "processing" && (
-          <span className="text-sm text-gray-500">
-            {Math.floor(creative.progress?.percent ?? 0)}%
-            <button onClick={onCancel} className="ml-2 text-gray-400 hover:text-gray-700">
-              Cancel
-            </button>
-          </span>
-        )}
-        {creative.status === "completed" && (
-          <>
-            <span className="text-sm text-green-600">✓ Saved</span>
-            {creative.kind === "video" && creative.transcriptStatus === "idle" && (
-              <button
-                onClick={onGenerateTranscript}
-                disabled={!transcriptFormatsSelected}
-                title={transcriptFormatsSelected ? undefined : "Select at least one transcript format above"}
-                className="text-sm text-blue-600 hover:underline disabled:text-gray-300 disabled:no-underline disabled:cursor-not-allowed"
-              >
-                Download Transcript
-              </button>
-            )}
-            {creative.kind === "video" && creative.transcriptStatus === "processing" && (
-              <span className="text-sm text-gray-400">Transcribing...</span>
-            )}
-            {creative.kind === "video" && creative.transcriptStatus === "completed" && (
-              <span className="text-sm text-green-600">✓ Transcribed</span>
-            )}
-            {creative.kind === "video" && creative.transcriptStatus === "failed" && (
-              <span className="text-sm text-red-600" title={creative.transcriptError}>
-                Transcript failed
-              </span>
-            )}
-          </>
-        )}
-        {creative.status === "failed" && (
-          <>
-            <span className="text-sm text-red-600" title={creative.error}>
-              Failed
+        <div className="flex items-center gap-2 flex-shrink-0">
+          {creative.status === "completed" && <span className="text-sm text-green-600">✓ Saved</span>}
+          {creative.transcriptStatus === "completed" && (
+            <span className="text-sm text-green-600">✓ Transcribed</span>
+          )}
+          {creative.transcriptStatus === "processing" && (
+            <span className="text-sm text-gray-400">Transcribing...</span>
+          )}
+          {creative.transcriptStatus === "failed" && (
+            <span className="text-sm text-red-600" title={creative.transcriptError}>
+              Transcript failed
             </span>
-            <button onClick={onDownload} className="text-sm text-blue-600 hover:underline">
+          )}
+
+          {creative.kind === "image" && creative.status === "ready" && (
+            <button onClick={onDownload} className={PRIMARY_BUTTON}>
+              Download
+            </button>
+          )}
+          {creative.status === "pending" && <span className="text-sm text-gray-400">Queued...</span>}
+          {creative.status === "processing" && (
+            <span className="text-sm text-gray-500">
+              {Math.floor(creative.progress?.percent ?? 0)}%
+              <button onClick={onCancel} className="ml-2 text-gray-400 hover:text-gray-700">
+                Cancel
+              </button>
+            </span>
+          )}
+          {creative.status === "failed" && (
+            <>
+              <span className="text-sm text-red-600" title={creative.error}>
+                Failed
+              </span>
+              <button onClick={onDownload} className={SECONDARY_BUTTON}>
+                Retry
+              </button>
+            </>
+          )}
+          {creative.status === "cancelled" && (
+            <button onClick={onDownload} className={SECONDARY_BUTTON}>
               Retry
             </button>
-          </>
-        )}
-        {creative.status === "cancelled" && (
-          <button onClick={onDownload} className="text-sm text-blue-600 hover:underline">
-            Retry
-          </button>
-        )}
+          )}
+        </div>
       </div>
+
+      {showVideoActions && (
+        <div className="flex flex-wrap gap-2 mt-2.5 pl-[68px]">
+          <button onClick={onDownload} className={SECONDARY_BUTTON}>
+            Download Video
+          </button>
+          <button
+            onClick={onTranscriptOnly}
+            disabled={!transcriptFormatsSelected}
+            title={formatHint}
+            className={SECONDARY_BUTTON}
+          >
+            Transcript Only
+          </button>
+          <button
+            onClick={onDownloadAndTranscript}
+            disabled={!transcriptFormatsSelected}
+            title={formatHint}
+            className={PRIMARY_BUTTON}
+          >
+            Download Video + Transcript
+          </button>
+        </div>
+      )}
     </div>
   );
 }
@@ -108,7 +127,7 @@ export default function MetaAdCard({
   onDownloadCreative,
   onDownloadAll,
   onCancelCreative,
-  onGenerateTranscript,
+  onTranscriptOnly,
   onDownloadAndTranscript,
   onRemove,
 }: {
@@ -117,7 +136,7 @@ export default function MetaAdCard({
   onDownloadCreative: (creativeId: string) => void;
   onDownloadAll: () => void;
   onCancelCreative: (creativeId: string) => void;
-  onGenerateTranscript: (creativeId: string) => void;
+  onTranscriptOnly: (creativeId: string) => void;
   onDownloadAndTranscript: (creativeId: string) => void;
   onRemove: () => void;
 }) {
@@ -136,7 +155,7 @@ export default function MetaAdCard({
         </div>
         <div className="flex items-center gap-3 flex-shrink-0">
           {group.status === "ready" && group.creatives.length > 1 && (
-            <button onClick={onDownloadAll} className="text-sm text-blue-600 hover:underline">
+            <button onClick={onDownloadAll} className={SECONDARY_BUTTON}>
               Download All
             </button>
           )}
@@ -159,7 +178,7 @@ export default function MetaAdCard({
             transcriptFormatsSelected={transcriptFormatsSelected}
             onDownload={() => onDownloadCreative(creative.id)}
             onCancel={() => onCancelCreative(creative.id)}
-            onGenerateTranscript={() => onGenerateTranscript(creative.id)}
+            onTranscriptOnly={() => onTranscriptOnly(creative.id)}
             onDownloadAndTranscript={() => onDownloadAndTranscript(creative.id)}
           />
         ))}

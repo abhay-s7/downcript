@@ -153,18 +153,26 @@ export async function runMetaCreativeJob(
   return result;
 }
 
+// If the creative was already downloaded and kept (filePath set), transcribes
+// it in place. Otherwise ("Transcript Only" on a creative that was never
+// downloaded), the server fetches the video into a throwaway temp file,
+// transcribes it, and discards it -- only the selected transcript format(s)
+// end up on disk. outputDir is only used in that second case, to know where
+// the transcript export(s) should land.
 export async function runMetaTranscribeJob(
   creative: MetaCreativeJob,
   outputFormat: "original" | "hinglish",
-  formats: TranscriptFormat[]
+  formats: TranscriptFormat[],
+  outputDir: string | undefined
 ): Promise<void> {
-  if (!creative.filePath) throw new Error("This creative hasn't been downloaded yet.");
-
   const res = await fetch("/api/meta-transcribe", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
       videoPath: creative.filePath,
+      videoUrl: creative.filePath ? undefined : creative.url,
+      outputDir,
+      adArchiveId: creative.adArchiveId,
       transcriptBaseName: creative.transcriptBaseName,
       outputFormat,
       formats,

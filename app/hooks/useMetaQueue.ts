@@ -80,7 +80,7 @@ export function useMetaQueue() {
     if (!creative) return;
 
     updateCreative(groupId, creativeId, { transcriptStatus: "processing", transcriptError: undefined });
-    void runMetaTranscribeJob(creative, outputFormat, formats)
+    void runMetaTranscribeJob(creative, outputFormat, formats, outputDirRef.current)
       .then(() => updateCreative(groupId, creativeId, { transcriptStatus: "completed" }))
       .catch((err) =>
         updateCreative(groupId, creativeId, {
@@ -237,7 +237,13 @@ export function useMetaQueue() {
     [updateCreative]
   );
 
-  const generateTranscript = useCallback(
+  // "Transcript Only": works whether or not the creative was already
+  // downloaded -- startTranscription/runMetaTranscribeJob transcribes the
+  // already-kept file if there is one, or fetches a throwaway temp copy and
+  // discards it otherwise. Either way, this never sets the creative's
+  // download `status`, since a video fetched only for this purpose is
+  // deliberately not a kept output.
+  const transcriptOnly = useCallback(
     (groupId: string, creativeId: string, outputFormat: OutputFormat, formats: TranscriptFormat[]) => {
       startTranscription(groupId, creativeId, outputFormat, formats);
     },
@@ -275,7 +281,7 @@ export function useMetaQueue() {
     downloadAll,
     downloadAndTranscribe,
     cancelCreative,
-    generateTranscript,
+    transcriptOnly,
     removeGroup,
   };
 }

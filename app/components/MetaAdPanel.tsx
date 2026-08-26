@@ -71,8 +71,8 @@ export default function MetaAdPanel() {
               onDownloadCreative={(creativeId) => queue.downloadCreative(group.id, creativeId)}
               onDownloadAll={() => queue.downloadAll(group.id)}
               onCancelCreative={(creativeId) => queue.cancelCreative(group.id, creativeId)}
-              onGenerateTranscript={(creativeId) =>
-                queue.generateTranscript(group.id, creativeId, outputFormat, formatsList)
+              onTranscriptOnly={(creativeId) =>
+                queue.transcriptOnly(group.id, creativeId, outputFormat, formatsList)
               }
               onDownloadAndTranscript={(creativeId) =>
                 queue.downloadAndTranscribe(group.id, creativeId, outputFormat, formatsList)
