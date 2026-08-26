@@ -12,6 +12,14 @@ const eslintConfig = defineConfig([
     "out/**",
     "build/**",
     "next-env.d.ts",
+    // Generated build output (gitignored) -- electron-builder's packaged
+    // app, the PyInstaller freeze, and the downloaded yt-dlp binary. None
+    // of this is source; scanning it (especially the bundled server.js,
+    // which inlines the whole standalone Next.js output) is both wrong and
+    // slow.
+    "dist-electron/**",
+    "build-python/**",
+    "vendor/**",
     // Plain CommonJS, intentionally -- Electron's main/preload processes and
     // build-time Node scripts, not part of the TS/ESM app bundle.
     "electron/**/*.js",
