@@ -1,0 +1,181 @@
+name: Windows Desktop Build
+
+# Builds the Windows installer ON a real Windows machine, since PyInstaller
+# and ffmpeg-static both produce platform-native binaries and cannot be
+# cross-compiled from macOS. This is the only reliable way to get a Windows
+# build with a genuinely bundled Python/FFmpeg/Whisper runtime.
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - "electron/**"
+      - "scripts/**"
+      - "app/**"
+      - "build-python/**"
+      - "package.json"
+      - "package-lock.json"
+      - "next.config.ts"
+      - ".github/workflows/windows-build.yml"
+
+jobs:
+  build-windows:
+    runs-on: windows-latest
+    # Forces npm to run every package.json script (including the
+    # POSIX-shell "postbuild" hook and build-python.sh/download-yt-dlp.sh)
+    # through the Git-for-Windows bash that ships on GitHub's Windows
+    # runners, instead of npm's default cmd.exe -- none of these scripts are
+    # cmd-compatible, and rewriting them as .cmd/.ps1 duplicates would
+    # diverge from the macOS build path this project also relies on.
+    env:
+      npm_config_script_shell: C:\Program Files\Git\bin\bash.exe
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.14"
+          architecture: x64
+
+      - name: Install Node dependencies (fetches the Windows ffmpeg-static binary)
+        run: npm ci
+        shell: bash
+
+      - name: Install Python build dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install --user -r requirements.txt
+        shell: bash
+
+      - name: Build Next.js standalone server
+        run: npm run build
+        shell: bash
+
+      - name: Freeze Python tools for Windows (PyInstaller)
+        run: npm run build:python
+        shell: bash
+
+      - name: Download yt-dlp Windows binary
+        run: ./scripts/download-yt-dlp.sh win32
+        shell: bash
+
+      - name: Verify the Windows runtime was actually generated
+        run: ./scripts/verify-runtime.sh win32
+        shell: bash
+
+      - name: Sanity-check bundled binaries are real Windows PE executables
+        shell: bash
+        run: |
+          set -euo pipefail
+          for exe in \
+            build-python/dist/win32/transcribe/transcribe.exe \
+            build-python/dist/win32/hinglish/hinglish.exe \
+            build-python/dist/win32/ensure_models/ensure_models.exe \
+            vendor/yt-dlp/win32/yt-dlp.exe \
+            node_modules/ffmpeg-static/ffmpeg.exe
+          do
+            magic="$(head -c2 "$exe" | od -An -tx1 | tr -d ' \n')"
+            if [ "$magic" != "4d5a" ]; then
+              echo "$exe does not start with the MZ magic bytes of a Windows PE executable (got $magic)" >&2
+              exit 1
+            fi
+            echo "OK (PE): $exe"
+          done
+
+      - name: Package Windows installer (NSIS)
+        # electron-builder auto-detects the CI=true env var GitHub Actions
+        # sets and defaults to publishing a GitHub Release, which needs a
+        # token we deliberately don't grant here -- this workflow uploads
+        # the installer as a build artifact instead (see below).
+        run: npx electron-builder --win --x64 --publish never
+        shell: bash
+
+      - name: Verify installer artifact exists
+        shell: bash
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          files=(dist-electron/*.exe)
+          if [ ${#files[@]} -eq 0 ]; then
+            echo "No Windows installer .exe found in dist-electron/" >&2
+            exit 1
+          fi
+          echo "Installer(s) built:"
+          printf '  %s\n' "${files[@]}"
+
+      - name: Upload Windows installer artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: transcript-generator-windows-installer
+          path: dist-electron/*.exe
+          if-no-files-found: error
+
+      # --- Clean-install smoke test -------------------------------------
+      # Everything above only proves the build completed. This section
+      # actually installs the produced NSIS package and drives the running
+      # app through its real IPC/HTTP surface, to prove the bundled runtime
+      # works -- not just that it exists on disk.
+      - name: Silent-install the packaged app
+        shell: pwsh
+        run: |
+          $installer = Get-ChildItem -Path dist-electron -Filter *.exe | Select-Object -First 1
+          if (-not $installer) { throw "No installer .exe found in dist-electron/" }
+          Write-Host "Installing $($installer.FullName) silently to C:\TGApp ..."
+          Start-Process -FilePath $installer.FullName -ArgumentList "/S", "/D=C:\TGApp" -Wait
+          # Non-recursive and excluding the uninstaller -- resources\py\**\*.exe
+          # and resources\yt-dlp\**\*.exe also match *.exe recursively, and
+          # would otherwise be picked up instead of the actual app launcher,
+          # which NSIS installs directly at the root of the install dir.
+          $installedExe = Get-ChildItem -Path "C:\TGApp" -Filter "*.exe" -File |
+            Where-Object { $_.Name -notlike "Uninstall*" } |
+            Select-Object -First 1
+          if (-not $installedExe) { throw "Installed app .exe not found under C:\TGApp" }
+          Write-Host "Installed app exe: $($installedExe.FullName)"
+          echo "INSTALLED_EXE=$($installedExe.FullName)" >> $env:GITHUB_ENV
+
+      - name: Generate a self-contained synthetic test video
+        shell: bash
+        run: node scripts/ci-make-test-video.mjs smoke-test.mp4
+
+      - name: Install Playwright (CI-only; not persisted to package.json)
+        shell: bash
+        env:
+          PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: "1"
+        run: npm install --no-save playwright
+
+      - name: Run clean-install smoke test (models:check, models:ensure, real transcription)
+        shell: bash
+        run: node scripts/ci-windows-smoke-test.mjs "$INSTALLED_EXE" smoke-test.mp4
+
+      # The smoke test above only exercises Upload (ffmpeg + Whisper) -- it
+      # never calls yt-dlp. Instagram and Dailymotion both depend on the
+      # bundled yt-dlp.exe, which had never actually been invoked from inside
+      # a real installed/packaged Windows build before this step existed.
+      - name: Run Dailymotion smoke test (real live URL, bundled yt-dlp.exe)
+        shell: bash
+        run: node scripts/ci-windows-dailymotion-smoke-test.mjs "$INSTALLED_EXE"
+
+      # Persisted by electron/main.js to <userData>/logs/app.log -- grabbed
+      # here regardless of outcome so a smoke-test failure's actual
+      # server-side diagnostic (yt-dlp exit code/stderr, ffmpeg/transcribe
+      # errors) is inspectable instead of only the generic message the UI
+      # shows.
+      - name: Upload persisted app log
+        if: always()
+        shell: bash
+        run: cp "$APPDATA/transcript-youtube-app/logs/app.log" app-log.txt 2>/dev/null || echo "no app.log found"
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: windows-app-log
+          path: app-log.txt
+          if-no-files-found: ignore

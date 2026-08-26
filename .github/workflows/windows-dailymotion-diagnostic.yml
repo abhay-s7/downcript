@@ -1,0 +1,81 @@
+name: Windows Dailymotion Diagnostic
+
+# One-off diagnostic: runs the bundled Windows yt-dlp.exe against a real,
+# live Dailymotion URL on an actual windows-latest runner, using the exact
+# same resolver/args app/lib/dailymotionDownload.ts uses. There is no
+# physical/virtual Windows machine available otherwise, and the reported bug
+# ("Dailymotion download doesn't work on Windows") can only be root-caused
+# with a genuine yt-dlp exit code/stderr from a real Windows process.
+on:
+  workflow_dispatch:
+    inputs:
+      dailymotion_url:
+        description: "Public Dailymotion video URL to test against"
+        required: false
+        default: "https://www.dailymotion.com/video/xaz8egq"
+
+jobs:
+  diagnose:
+    runs-on: windows-latest
+    env:
+      npm_config_script_shell: C:\Program Files\Git\bin\bash.exe
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+
+      - name: Install Node dependencies (fetches Windows ffmpeg-static binary)
+        run: npm ci
+        shell: bash
+
+      - name: Download yt-dlp Windows binary
+        run: ./scripts/download-yt-dlp.sh win32
+        shell: bash
+
+      - name: Sanity-check yt-dlp.exe is a real PE binary
+        shell: bash
+        run: |
+          set -euo pipefail
+          magic="$(head -c2 vendor/yt-dlp/win32/yt-dlp.exe | od -An -tx1 | tr -d ' \n')"
+          echo "magic bytes: $magic"
+          [ "$magic" = "4d5a" ] || { echo "yt-dlp.exe is not a valid PE binary" >&2; exit 1; }
+
+      - name: Windows Defender status (checking for quarantine/false-positive)
+        shell: pwsh
+        continue-on-error: true
+        run: |
+          Get-MpComputerStatus | Format-List AntivirusEnabled, RealTimeProtectionEnabled, AntivirusSignatureLastUpdated
+          Write-Host "--- Threat detections ---"
+          Get-MpThreatDetection | Format-List
+          Write-Host "--- yt-dlp.exe file status after download ---"
+          Test-Path "vendor\yt-dlp\win32\yt-dlp.exe"
+          Get-Item "vendor\yt-dlp\win32\yt-dlp.exe" | Format-List Name, Length, LastWriteTime
+
+      - name: Run diagnostic (version, dump-json, full download) against Dailymotion
+        shell: bash
+        run: node scripts/ci-dailymotion-diagnostic.mjs "${{ github.event.inputs.dailymotion_url }}"
+
+      - name: Also verify yt-dlp works at all on Windows (YouTube metadata only, isolates Dailymotion-specific vs general)
+        shell: bash
+        continue-on-error: true
+        run: |
+          ./vendor/yt-dlp/win32/yt-dlp.exe --dump-json --no-warnings "https://www.youtube.com/watch?v=jNQXAC9IVRw" > yt-dump.json 2> yt-dump.stderr.log
+          echo "exit=$?"
+          echo "--- stderr ---"
+          cat yt-dump.stderr.log
+          echo "--- stdout head ---"
+          head -c 500 yt-dump.json
+
+      - name: Upload diagnostic artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: dailymotion-diagnostic-logs
+          path: |
+            dm-diagnostic-video.mp4
+            yt-dump.json
+            yt-dump.stderr.log
+          if-no-files-found: ignore

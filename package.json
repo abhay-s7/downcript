@@ -1,0 +1,85 @@
+{
+  "name": "downcript",
+  "version": "0.1.0",
+  "private": true,
+  "main": "electron/main.js",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "postbuild": "mkdir -p .next/standalone/.next && rm -rf .next/standalone/.next/static .next/standalone/public && cp -R .next/static .next/standalone/.next/static && (test -d public && cp -R public .next/standalone/public || true)",
+    "start": "next start",
+    "lint": "eslint",
+    "electron:dev": "concurrently -k -n NEXT,ELECTRON -c blue,magenta \"npm run dev\" \"wait-on tcp:3000 && cross-env ELECTRON_START_URL=http://localhost:3000 electron .\"",
+    "build:python": "scripts/build-python.sh",
+    "verify:runtime": "scripts/verify-runtime.sh",
+    "electron:preview": "npm run build && npm run build:python && electron .",
+    "dist:mac": "npm run build && npm run build:python && ./scripts/download-yt-dlp.sh && ./scripts/verify-runtime.sh darwin && electron-builder --mac --arm64",
+    "dist:win": "npm run build && npm run build:python && ./scripts/download-yt-dlp.sh win32 && ./scripts/verify-runtime.sh win32 && electron-builder --win --x64"
+  },
+  "build": {
+    "appId": "com.abhaysatpute.downcript",
+    "productName": "Downcript",
+    "directories": {
+      "output": "dist-electron",
+      "buildResources": "build"
+    },
+    "files": [
+      "electron/**/*",
+      "package.json"
+    ],
+    "afterPack": "scripts/after-pack.js",
+    "mac": {
+      "icon": "build/icon.icns",
+      "category": "public.app-category.productivity",
+      "identity": null,
+      "target": [{ "target": "dmg", "arch": ["arm64"] }],
+      "extraResources": [
+        { "from": "build-python/dist/darwin/transcribe", "to": "py/transcribe", "filter": ["**/*"] },
+        { "from": "build-python/dist/darwin/hinglish", "to": "py/hinglish", "filter": ["**/*"] },
+        { "from": "build-python/dist/darwin/ensure_models", "to": "py/ensure_models", "filter": ["**/*"] },
+        { "from": "vendor/yt-dlp/darwin", "to": "yt-dlp/darwin", "filter": ["**/*"] }
+      ]
+    },
+    "win": {
+      "icon": "build/icon.ico",
+      "target": [{ "target": "nsis", "arch": ["x64"] }],
+      "extraResources": [
+        { "from": "build-python/dist/win32/transcribe", "to": "py/transcribe", "filter": ["**/*"] },
+        { "from": "build-python/dist/win32/hinglish", "to": "py/hinglish", "filter": ["**/*"] },
+        { "from": "build-python/dist/win32/ensure_models", "to": "py/ensure_models", "filter": ["**/*"] },
+        { "from": "vendor/yt-dlp/win32", "to": "yt-dlp/win32", "filter": ["**/*"] }
+      ]
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true
+    }
+  },
+  "dependencies": {
+    "cheerio": "^1.2.0",
+    "docx": "^9.7.1",
+    "ffmpeg-static": "^5.3.0",
+    "next": "16.3.0",
+    "react": "19.2.8",
+    "react-dom": "19.2.8",
+    "youtube-transcript": "^1.3.1"
+  },
+  "devDependencies": {
+    "@tailwindcss/postcss": "^4",
+    "@types/node": "^20",
+    "@types/react": "^19",
+    "@types/react-dom": "^19",
+    "concurrently": "^10.0.5",
+    "cross-env": "^10.1.0",
+    "electron": "^43.4.0",
+    "electron-builder": "^26.15.3",
+    "eslint": "^9",
+    "eslint-config-next": "16.3.0",
+    "tailwindcss": "^4",
+    "typescript": "^5",
+    "wait-on": "^9.1.0"
+  }
+}
