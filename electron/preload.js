@@ -17,4 +17,5 @@ contextBridge.exposeInMainWorld("desktop", {
   },
   chooseFolder: () => ipcRenderer.invoke("dialog:chooseFolder"),
   defaultDownloadDir: () => ipcRenderer.invoke("dialog:defaultDownloadDir"),
+  resolveMetaAd: (url) => ipcRenderer.invoke("meta:resolveAd", url),
 });

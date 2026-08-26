@@ -13,6 +13,7 @@ import ProcessingQueue from "@/app/components/ProcessingQueue";
 import TranscriptList from "@/app/components/TranscriptList";
 import TranscriptViewer from "@/app/components/TranscriptViewer";
 import DownloadPanel from "@/app/components/DownloadPanel";
+import MetaAdPanel from "@/app/components/MetaAdPanel";
 import { useTranscriptionQueue } from "@/app/hooks/useTranscriptionQueue";
 import {
   OutputFormat,
@@ -28,7 +29,7 @@ import { Mode } from "@/app/lib/uiTypes";
 // of the real Home/Download/Transcript/Meta Ads/Settings navigation (a
 // separate, larger unification pass) — not the final nav.
 export default function Home() {
-  const [section, setSection] = useState<"transcript" | "download">("transcript");
+  const [section, setSection] = useState<"transcript" | "download" | "meta">("transcript");
   const [mode, setMode] = useState<Mode>("youtube");
   const [outputFormat, setOutputFormat] = useState<OutputFormat>("original");
   const [removedJobIds, setRemovedJobIds] = useState<Record<string, true>>({});
@@ -75,9 +76,17 @@ export default function Home() {
             >
               Download
             </button>
+            <button
+              onClick={() => setSection("meta")}
+              className={`px-3 py-1.5 rounded-md font-medium ${section === "meta" ? "bg-gray-900 text-white" : "text-gray-500 hover:bg-gray-100"}`}
+            >
+              Meta Ads
+            </button>
           </div>
 
-          {section === "download" ? (
+          {section === "meta" ? (
+            <MetaAdPanel />
+          ) : section === "download" ? (
             <DownloadPanel />
           ) : viewingJob ? (
             <TranscriptViewer

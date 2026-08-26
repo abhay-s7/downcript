@@ -316,6 +316,74 @@ ipcMain.handle("dialog:chooseFolder", async () => {
 
 ipcMain.handle("dialog:defaultDownloadDir", () => path.join(app.getPath("downloads"), "Downcript"));
 
+// Every facebook.com/ads/... URL -- including the lighter "preview" endpoints
+// -- sits behind a JS-executing bot-challenge page (confirmed: a plain HTTPS
+// request gets a 403 challenge page, never the real content). Only a real
+// browser context gets past it. Rather than bundle a second Chromium via
+// Playwright (conflicts with the zero-setup goal), this reuses the Chromium
+// Electron already ships, in a hidden window driven from here -- the one
+// place in the app that can create a BrowserWindow at all. Everything after
+// "get the raw ad JSON back" (shape search, classification, downloading)
+// happens in ordinary TypeScript in the Next.js server, same as every other
+// source.
+const META_DESKTOP_USER_AGENT =
+  "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36";
+const META_RESOLVE_POLL_MS = 750;
+const META_RESOLVE_MAX_ATTEMPTS = 20; // ~15s, covering the challenge's own reload + real page load
+
+// The only page-format-specific logic that runs inside the hidden window --
+// kept to "find the script tag" only, since this is the hardest part to
+// iterate on if Meta changes something (no devtools, no error output beyond
+// what executeJavaScript returns). Actual JSON shape parsing happens back in
+// Node/TypeScript where it's testable.
+const FIND_AD_SNAPSHOT_SCRIPT = `
+  (function() {
+    const scripts = Array.from(document.querySelectorAll('script[type="application/json"][data-sjs]'));
+    for (const s of scripts) {
+      if (s.textContent && s.textContent.includes("ad_archive_id")) {
+        try { return JSON.parse(s.textContent); } catch { /* keep looking */ }
+      }
+    }
+    return null;
+  })();
+`;
+
+function extractMetaAdId(url) {
+  try {
+    return new URL(url.trim()).searchParams.get("id");
+  } catch {
+    return null;
+  }
+}
+
+ipcMain.handle("meta:resolveAd", async (_event, url) => {
+  const adId = extractMetaAdId(url);
+  if (!adId) throw new Error("That doesn't look like a Meta Ad Library link.");
+
+  const win = new BrowserWindow({ show: false });
+  try {
+    win.webContents.setUserAgent(META_DESKTOP_USER_AGENT);
+    await win.loadURL(`https://www.facebook.com/ads/library/?id=${encodeURIComponent(adId)}`);
+
+    let raw = null;
+    for (let attempt = 0; attempt < META_RESOLVE_MAX_ATTEMPTS && !raw; attempt++) {
+      try {
+        raw = await win.webContents.executeJavaScript(FIND_AD_SNAPSHOT_SCRIPT);
+      } catch {
+        // Page mid-navigation (the challenge's own reload) -- retry.
+      }
+      if (!raw) await new Promise((r) => setTimeout(r, META_RESOLVE_POLL_MS));
+    }
+
+    if (!raw) {
+      throw new Error("Could not load this ad. Meta may have changed their page, or this ad is unavailable.");
+    }
+    return raw;
+  } finally {
+    win.destroy();
+  }
+});
+
 function createWindow() {
   mainWindow = new BrowserWindow({
     width: 1280,
