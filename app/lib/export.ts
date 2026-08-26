@@ -82,6 +82,26 @@ export async function buildSingleDocxBlob(
   return Packer.toBlob(doc);
 }
 
+// Server-side counterpart to buildSingleDocxBlob -- Meta Ads writes exports
+// directly into the ad's folder (fs.writeFile) rather than triggering a
+// browser download, so it needs a Buffer, not a Blob.
+export async function buildSingleDocxBuffer(
+  title: string,
+  segments: TranscriptSegment[]
+): Promise<Buffer> {
+  const doc = new Document({
+    sections: [
+      {
+        children: [
+          new Paragraph({ text: stripExtension(title), heading: HeadingLevel.HEADING_1 }),
+          ...paragraphBlocks(segments),
+        ],
+      },
+    ],
+  });
+  return Packer.toBuffer(doc);
+}
+
 export async function buildCombinedDocxBlob(videos: ExportableVideo[]): Promise<Blob> {
   const children: Paragraph[] = [
     new Paragraph({ text: "Google Drive Transcripts", heading: HeadingLevel.TITLE }),
