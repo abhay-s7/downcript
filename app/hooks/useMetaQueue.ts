@@ -10,6 +10,9 @@ import {
   runMetaCreativeJob,
   runMetaTranscribeJob,
 } from "@/app/lib/metaJobs";
+import { TranscriptFormat } from "@/app/lib/services/meta/types";
+
+type OutputFormat = "original" | "hinglish";
 
 // Same worker-loop shape as useDownloadQueue/useTranscriptionQueue, but the
 // unit of work (a creative) is nested inside a group (the ad) for display --
@@ -25,6 +28,14 @@ export function useMetaQueue() {
   const currentAbortRef = useRef<AbortController | null>(null);
   const currentJobIdRef = useRef<string | null>(null);
   const outputDirRef = useRef<string | undefined>(undefined);
+  // Set only by "Download Video + Transcript" -- checked once a creative's
+  // download completes so transcription can start automatically, using
+  // whatever format(s) were selected at the moment the combo action was
+  // clicked (not re-read later, in case the user changes the checkboxes
+  // while the download is still in the queue).
+  const autoTranscribeRef = useRef<Map<string, { outputFormat: OutputFormat; formats: TranscriptFormat[] }>>(
+    new Map()
+  );
 
   const sync = useCallback(() => setGroups([...groupsRef.current]), []);
 
@@ -53,6 +64,31 @@ export function useMetaQueue() {
   const setOutputDir = useCallback((dir: string | undefined) => {
     outputDirRef.current = dir;
   }, []);
+
+  // Shared by the public generateTranscript() and the worker's automatic
+  // post-download transcription (for "Download Video + Transcript") --
+  // plain function rather than useCallback since it's only ever called from
+  // inside other callbacks in this hook, never returned to a component.
+  function startTranscription(
+    groupId: string,
+    creativeId: string,
+    outputFormat: OutputFormat,
+    formats: TranscriptFormat[]
+  ) {
+    const group = groupsRef.current.find((g) => g.id === groupId);
+    const creative = group?.creatives.find((c) => c.id === creativeId);
+    if (!creative) return;
+
+    updateCreative(groupId, creativeId, { transcriptStatus: "processing", transcriptError: undefined });
+    void runMetaTranscribeJob(creative, outputFormat, formats)
+      .then(() => updateCreative(groupId, creativeId, { transcriptStatus: "completed" }))
+      .catch((err) =>
+        updateCreative(groupId, creativeId, {
+          transcriptStatus: "failed",
+          transcriptError: err instanceof Error ? err.message : "Transcription failed.",
+        })
+      );
+  }
 
   function findPendingCreative(): { groupId: string; creative: MetaCreativeJob } | null {
     for (const group of groupsRef.current) {
@@ -89,7 +125,17 @@ export function useMetaQueue() {
             filePath: result.filePath,
             fileName: result.fileName,
           });
+
+          const autoTranscribe = autoTranscribeRef.current.get(creative.id);
+          if (autoTranscribe) {
+            autoTranscribeRef.current.delete(creative.id);
+            startTranscription(groupId, creative.id, autoTranscribe.outputFormat, autoTranscribe.formats);
+          }
         } catch (err) {
+          // Download itself failed/was cancelled -- nothing to transcribe,
+          // so don't leave a stale auto-transcribe request behind for a
+          // possible future retry of this same creative id.
+          autoTranscribeRef.current.delete(creative.id);
           if (controller.signal.aborted) {
             updateCreative(groupId, creative.id, { status: "cancelled" });
           } else {
@@ -115,6 +161,10 @@ export function useMetaQueue() {
         sync();
       }
     }
+    // startTranscription is a plain function redefined every render (see
+    // its own comment) -- it closes over refs and the stable updateCreative,
+    // not over anything that needs runWorker to be recreated when it does.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [updateCreative, sync]);
 
   const addUrl = useCallback((url: string) => {
@@ -188,22 +238,27 @@ export function useMetaQueue() {
   );
 
   const generateTranscript = useCallback(
-    (groupId: string, creativeId: string, outputFormat: "original" | "hinglish") => {
-      const group = groupsRef.current.find((g) => g.id === groupId);
-      const creative = group?.creatives.find((c) => c.id === creativeId);
-      if (!creative) return;
-
-      updateCreative(groupId, creativeId, { transcriptStatus: "processing", transcriptError: undefined });
-      void runMetaTranscribeJob(creative, outputFormat)
-        .then(() => updateCreative(groupId, creativeId, { transcriptStatus: "completed" }))
-        .catch((err) =>
-          updateCreative(groupId, creativeId, {
-            transcriptStatus: "failed",
-            transcriptError: err instanceof Error ? err.message : "Transcription failed.",
-          })
-        );
+    (groupId: string, creativeId: string, outputFormat: OutputFormat, formats: TranscriptFormat[]) => {
+      startTranscription(groupId, creativeId, outputFormat, formats);
     },
-    [updateCreative]
+    // startTranscription is a plain function (not useCallback) that only
+    // closes over refs and the stable updateCreative, so it's safe to omit
+    // from deps -- it's not itself a changing value.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    []
+  );
+
+  // "Download Video + Transcript": enqueues the download like
+  // downloadCreative, but records the chosen format(s) so the worker starts
+  // transcription automatically the moment the download completes.
+  const downloadAndTranscribe = useCallback(
+    (groupId: string, creativeId: string, outputFormat: OutputFormat, formats: TranscriptFormat[]) => {
+      autoTranscribeRef.current.set(creativeId, { outputFormat, formats });
+      cancelRequestedRef.current = false;
+      updateCreative(groupId, creativeId, { status: "pending", error: undefined });
+      void runWorker();
+    },
+    [updateCreative, runWorker]
   );
 
   const removeGroup = useCallback((groupId: string) => {
@@ -218,6 +273,7 @@ export function useMetaQueue() {
     addUrl,
     downloadCreative,
     downloadAll,
+    downloadAndTranscribe,
     cancelCreative,
     generateTranscript,
     removeGroup,

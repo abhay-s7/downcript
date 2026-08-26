@@ -1,4 +1,4 @@
-import { MetaAdManifest, MetaAdType, MetaCreativeKind } from "@/app/lib/services/meta/types";
+import { MetaAdManifest, MetaAdType, MetaCreativeKind, TranscriptFormat } from "@/app/lib/services/meta/types";
 import { parseAdSnapshot } from "@/app/lib/services/meta/parseSnapshot";
 import { metaCreativeFileName, metaTranscriptBaseName } from "@/app/lib/services/meta/naming";
 import { YtDlpProgress } from "@/app/lib/services/downloader/ytdlpProgress";
@@ -155,7 +155,8 @@ export async function runMetaCreativeJob(
 
 export async function runMetaTranscribeJob(
   creative: MetaCreativeJob,
-  outputFormat: "original" | "hinglish"
+  outputFormat: "original" | "hinglish",
+  formats: TranscriptFormat[]
 ): Promise<void> {
   if (!creative.filePath) throw new Error("This creative hasn't been downloaded yet.");
 
@@ -166,6 +167,7 @@ export async function runMetaTranscribeJob(
       videoPath: creative.filePath,
       transcriptBaseName: creative.transcriptBaseName,
       outputFormat,
+      formats,
       jobId: creative.id,
     }),
   });

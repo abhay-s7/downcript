@@ -6,24 +6,30 @@ import { TranscriptSegment } from "@/app/types";
 import { convertToHinglish } from "@/app/lib/hinglish";
 import { NoAudioTrackError, transcribeVideoFile } from "@/app/lib/transcribeVideoFile";
 import { buildSingleDocxBuffer, buildSrt, buildTxt } from "@/app/lib/export";
+import { TranscriptFormat } from "@/app/lib/services/meta/types";
 
 interface MetaTranscribeRequestBody {
   videoPath?: string;
   transcriptBaseName?: string;
   outputFormat?: "original" | "hinglish";
+  formats?: TranscriptFormat[];
   jobId?: string;
 }
 
-// Unlike the rest of Meta Ads' file handling, this writes its exports
-// directly next to the source video (TXT/DOCX/SRT all at once) rather than
-// waiting for the user to pick a format from ExportMenu -- matching the
-// brief's example folder layout, where a transcribed creative always has
-// all three sitting alongside it.
+// Writes exports directly next to the source video rather than waiting for
+// the user to pick a format from ExportMenu (Meta Ads has no on-demand
+// "click Export DOCX whenever" moment the way the main Transcript module
+// does), but -- unlike an earlier version of this route -- only for the
+// format(s) the user actually selected before generating, not all three
+// unconditionally. Whisper still runs exactly once regardless of how many
+// formats are selected; only the write step below is selective.
 export async function POST(req: NextRequest) {
   const body = (await req.json()) as MetaTranscribeRequestBody;
   const { videoPath, transcriptBaseName, jobId } = body;
   const trackingId = typeof jobId === "string" && jobId ? jobId : undefined;
   const outputFormat = body.outputFormat === "original" ? "original" : "hinglish";
+  const formats: TranscriptFormat[] =
+    Array.isArray(body.formats) && body.formats.length > 0 ? body.formats : ["docx"];
 
   if (!videoPath || !transcriptBaseName) {
     return NextResponse.json({ error: "Missing video path." }, { status: 400 });
@@ -55,17 +61,25 @@ export async function POST(req: NextRequest) {
     }
 
     const dir = path.dirname(videoPath);
-    const txtPath = path.join(dir, `${transcriptBaseName}.txt`);
-    const docxPath = path.join(dir, `${transcriptBaseName}.docx`);
-    const srtPath = path.join(dir, `${transcriptBaseName}.srt`);
+    const writtenPaths: Partial<Record<TranscriptFormat, string>> = {};
+    const writes: Promise<unknown>[] = [];
 
-    await Promise.all([
-      writeFile(txtPath, buildTxt(transcriptBaseName, segments)),
-      buildSingleDocxBuffer(transcriptBaseName, segments).then((buf) => writeFile(docxPath, buf)),
-      writeFile(srtPath, buildSrt(segments)),
-    ]);
+    if (formats.includes("txt")) {
+      writtenPaths.txt = path.join(dir, `${transcriptBaseName}.txt`);
+      writes.push(writeFile(writtenPaths.txt, buildTxt(transcriptBaseName, segments)));
+    }
+    if (formats.includes("docx")) {
+      writtenPaths.docx = path.join(dir, `${transcriptBaseName}.docx`);
+      writes.push(buildSingleDocxBuffer(transcriptBaseName, segments).then((buf) => writeFile(writtenPaths.docx!, buf)));
+    }
+    if (formats.includes("srt")) {
+      writtenPaths.srt = path.join(dir, `${transcriptBaseName}.srt`);
+      writes.push(writeFile(writtenPaths.srt, buildSrt(segments)));
+    }
 
-    return NextResponse.json({ segments, originalSegments, txtPath, docxPath, srtPath });
+    await Promise.all(writes);
+
+    return NextResponse.json({ segments, originalSegments, paths: writtenPaths });
   } finally {
     await rm(workDir, { recursive: true, force: true });
   }

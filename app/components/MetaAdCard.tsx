@@ -5,15 +5,19 @@ import { MetaAdGroup, MetaCreativeJob } from "@/app/lib/metaJobs";
 function CreativeRow({
   group,
   creative,
+  transcriptFormatsSelected,
   onDownload,
   onCancel,
   onGenerateTranscript,
+  onDownloadAndTranscript,
 }: {
   group: MetaAdGroup;
   creative: MetaCreativeJob;
+  transcriptFormatsSelected: boolean;
   onDownload: () => void;
   onCancel: () => void;
   onGenerateTranscript: () => void;
+  onDownloadAndTranscript: () => void;
 }) {
   const label = group.creatives.length > 1 ? `Creative ${String(creative.index).padStart(2, "0")}` : null;
 
@@ -27,9 +31,21 @@ function CreativeRow({
 
       <div className="flex items-center gap-2 flex-shrink-0">
         {creative.status === "ready" && (
-          <button onClick={onDownload} className="text-sm text-blue-600 hover:underline">
-            Download
-          </button>
+          <>
+            <button onClick={onDownload} className="text-sm text-blue-600 hover:underline">
+              {creative.kind === "video" ? "Download Video" : "Download"}
+            </button>
+            {creative.kind === "video" && (
+              <button
+                onClick={onDownloadAndTranscript}
+                disabled={!transcriptFormatsSelected}
+                title={transcriptFormatsSelected ? undefined : "Select at least one transcript format above"}
+                className="text-sm text-blue-600 hover:underline disabled:text-gray-300 disabled:no-underline disabled:cursor-not-allowed"
+              >
+                Download Video + Transcript
+              </button>
+            )}
+          </>
         )}
         {creative.status === "pending" && <span className="text-sm text-gray-400">Queued...</span>}
         {creative.status === "processing" && (
@@ -44,8 +60,13 @@ function CreativeRow({
           <>
             <span className="text-sm text-green-600">✓ Saved</span>
             {creative.kind === "video" && creative.transcriptStatus === "idle" && (
-              <button onClick={onGenerateTranscript} className="text-sm text-blue-600 hover:underline">
-                Generate Transcript
+              <button
+                onClick={onGenerateTranscript}
+                disabled={!transcriptFormatsSelected}
+                title={transcriptFormatsSelected ? undefined : "Select at least one transcript format above"}
+                className="text-sm text-blue-600 hover:underline disabled:text-gray-300 disabled:no-underline disabled:cursor-not-allowed"
+              >
+                Download Transcript
               </button>
             )}
             {creative.kind === "video" && creative.transcriptStatus === "processing" && (
@@ -83,17 +104,21 @@ function CreativeRow({
 
 export default function MetaAdCard({
   group,
+  transcriptFormatsSelected,
   onDownloadCreative,
   onDownloadAll,
   onCancelCreative,
   onGenerateTranscript,
+  onDownloadAndTranscript,
   onRemove,
 }: {
   group: MetaAdGroup;
+  transcriptFormatsSelected: boolean;
   onDownloadCreative: (creativeId: string) => void;
   onDownloadAll: () => void;
   onCancelCreative: (creativeId: string) => void;
   onGenerateTranscript: (creativeId: string) => void;
+  onDownloadAndTranscript: (creativeId: string) => void;
   onRemove: () => void;
 }) {
   return (
@@ -131,9 +156,11 @@ export default function MetaAdCard({
             key={creative.id}
             group={group}
             creative={creative}
+            transcriptFormatsSelected={transcriptFormatsSelected}
             onDownload={() => onDownloadCreative(creative.id)}
             onCancel={() => onCancelCreative(creative.id)}
             onGenerateTranscript={() => onGenerateTranscript(creative.id)}
+            onDownloadAndTranscript={() => onDownloadAndTranscript(creative.id)}
           />
         ))}
     </div>

@@ -19,3 +19,12 @@ export interface MetaAdManifest {
 }
 
 export class MetaAdUnavailableError extends Error {}
+
+// Which transcript export(s) to write for a Meta Ads video creative --
+// chosen by the user before generating a transcript, so only the formats
+// they actually want get written (unlike the main Transcript module, this
+// writes straight to disk rather than an on-demand browser download, so
+// there's no equivalent of "click Export DOCX whenever you feel like it"
+// here -- the choice has to be made up front, at generate time).
+export type TranscriptFormat = "txt" | "docx" | "srt";
+export const TRANSCRIPT_FORMATS: TranscriptFormat[] = ["txt", "docx", "srt"];
