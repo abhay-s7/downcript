@@ -6,6 +6,7 @@ import ffmpegPath from "ffmpeg-static";
 import { registerCanceler } from "@/app/lib/jobRegistry";
 import { extractDailymotionVideoId } from "@/app/lib/dailymotion";
 import { resolveYtDlp } from "@/app/lib/ytdlpRuntime";
+import { parseYtDlpProgressLine, YtDlpProgress } from "@/app/lib/services/downloader/ytdlpProgress";
 
 export interface DownloadedDailymotionVideo {
   workDir: string;
@@ -19,13 +20,7 @@ export class DailymotionDownloadRestrictedError extends Error {}
 // ZMiB/s ETA W" lines — never a fake/timer-based estimate. downloadedBytes
 // is derived from percent * totalBytes since yt-dlp only reports the
 // percentage directly, not a running byte counter.
-export interface DailymotionDownloadProgress {
-  percent: number;
-  downloadedBytes?: number;
-  totalBytes?: number;
-  speedBytesPerSec?: number;
-  etaSeconds?: number;
-}
+export type DailymotionDownloadProgress = YtDlpProgress;
 
 // Dailymotion serves every quality tier as muxed audio+video HLS — there is
 // no audio-only format like Instagram Reels have — so "worst" is the
@@ -54,39 +49,6 @@ const CONCURRENT_FRAGMENTS = 8;
 const KILL_GRACE_MS = 5000;
 
 const RESTRICTED_PATTERN = /unavailable|private|removed|restricted|geo.?block/i;
-
-const SIZE_UNITS: Record<string, number> = { B: 1, KiB: 1024, MiB: 1024 ** 2, GiB: 1024 ** 3 };
-
-function parseSize(value: string, unit: string): number | undefined {
-  const bytesPerUnit = SIZE_UNITS[unit];
-  if (bytesPerUnit === undefined) return undefined;
-  return parseFloat(value) * bytesPerUnit;
-}
-
-// "12:34" (mm:ss) or "01:02:03" (hh:mm:ss) -> seconds.
-function parseEta(value: string): number | undefined {
-  const parts = value.split(":").map(Number);
-  if (parts.some((n) => Number.isNaN(n))) return undefined;
-  return parts.reduce((acc, n) => acc * 60 + n, 0);
-}
-
-// Matches lines like: "[download]  68.0% of ~ 267.45MiB at 6.22MiB/s ETA 00:08 (frag 1307/1595)"
-function parseYtDlpProgressLine(line: string): DailymotionDownloadProgress | null {
-  const percentMatch = line.match(/^\[download\]\s+([\d.]+)%/);
-  if (!percentMatch) return null;
-
-  const percent = parseFloat(percentMatch[1]);
-  const sizeMatch = line.match(/of\s+~?\s*([\d.]+)\s*(B|KiB|MiB|GiB)/i);
-  const speedMatch = line.match(/at\s+([\d.]+)\s*(B|KiB|MiB|GiB)\/s/i);
-  const etaMatch = line.match(/ETA\s+(\d+(?::\d+){1,2})/);
-
-  const totalBytes = sizeMatch ? parseSize(sizeMatch[1], sizeMatch[2]) : undefined;
-  const speedBytesPerSec = speedMatch ? parseSize(speedMatch[1], speedMatch[2]) : undefined;
-  const etaSeconds = etaMatch ? parseEta(etaMatch[1]) : undefined;
-  const downloadedBytes = totalBytes !== undefined ? Math.round(totalBytes * (percent / 100)) : undefined;
-
-  return { percent, downloadedBytes, totalBytes, speedBytesPerSec, etaSeconds };
-}
 
 // Downloads a Dailymotion video to a temporary local .mp4 file, waits for
 // the download to fully finish, and verifies the file is real before
