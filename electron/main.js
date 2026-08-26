@@ -316,6 +316,11 @@ ipcMain.handle("dialog:chooseFolder", async () => {
 
 ipcMain.handle("dialog:defaultDownloadDir", () => path.join(app.getPath("downloads"), "Downcript"));
 
+// Settings' "View logs" action -- surfaces the same app.log every error
+// message already points users to, without giving the renderer direct
+// filesystem access.
+ipcMain.handle("dialog:openLogsFolder", () => shell.showItemInFolder(LOG_FILE));
+
 // Every facebook.com/ads/... URL -- including the lighter "preview" endpoints
 // -- sits behind a JS-executing bot-challenge page (confirmed: a plain HTTPS
 // request gets a 403 challenge page, never the real content). Only a real
