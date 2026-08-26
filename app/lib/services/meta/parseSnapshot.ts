@@ -1,4 +1,4 @@
-import { MetaAdManifest, MetaAdType, MetaCreative, MetaCreativeKind } from "@/app/lib/services/meta/types";
+import { MetaAdManifest, MetaAdType, MetaAdUnavailableError, MetaCreative, MetaCreativeKind } from "@/app/lib/services/meta/types";
 
 interface RawCard {
   video_hd_url?: string | null;
@@ -31,28 +31,40 @@ interface RawAdArchive {
   snapshot: RawSnapshot;
 }
 
-// The wrapper this sits inside (Relay's "require"/"__bbox" preload cache) is
-// internal plumbing that shifted noticeably even between two loads of the
-// same ad during development, so this deliberately does not hardcode a path
-// down to it -- it walks the whole returned JSON looking for the one shape
-// that actually matters: an object with both an ad_archive_id and a
-// snapshot. Bounded by the JSON's own (finite, acyclic) structure.
-function findAdArchive(node: unknown, depth = 0): RawAdArchive | null {
+interface RawDeeplinkResult {
+  deeplink_ad_archive: RawAdArchive | null;
+  no_result_reason?: string | null;
+}
+
+// Deliberately anchored to the specific "deeplink_ad_archive_result" key
+// rather than a generic {ad_archive_id, snapshot} shape match. That looser
+// version was tried first and turned out to be actively unsafe: for an
+// invalid ad id, Meta's page doesn't omit ad data -- it falls back to a
+// generic search-results listing of OTHER real ads, and a shape-only search
+// silently grabbed the first unrelated one, misattributing it to the URL the
+// user pasted (confirmed with id=1: resolved to a real, completely
+// unrelated ad from search_results_connection.edges[].node.collated_results,
+// not the requested id). deeplink_ad_archive_result is the one slot
+// specifically meant to answer "what did THIS id resolve to" -- confirmed
+// across three real ads (two valid, one invalid) that it's always present,
+// with deeplink_ad_archive explicitly null + a no_result_reason for an
+// invalid/deleted ad. A wrong result is worse than a failure, so this does
+// NOT fall back to shape-guessing if the key is ever missing -- it fails
+// clearly instead (see parseAdSnapshot).
+function findDeeplinkResult(node: unknown, depth = 0): RawDeeplinkResult | null {
   if (depth > 25 || node === null || typeof node !== "object") return null;
 
-  if (
-    "ad_archive_id" in node &&
-    typeof (node as Record<string, unknown>).ad_archive_id === "string" &&
-    "snapshot" in node &&
-    typeof (node as Record<string, unknown>).snapshot === "object" &&
-    (node as Record<string, unknown>).snapshot !== null
-  ) {
-    return node as unknown as RawAdArchive;
+  const record = node as Record<string, unknown>;
+  if ("deeplink_ad_archive_result" in record) {
+    const result = record.deeplink_ad_archive_result;
+    if (result && typeof result === "object" && "deeplink_ad_archive" in (result as object)) {
+      return result as RawDeeplinkResult;
+    }
   }
 
-  const values = Array.isArray(node) ? node : Object.values(node as Record<string, unknown>);
+  const values = Array.isArray(node) ? node : Object.values(record);
   for (const value of values) {
-    const found = findAdArchive(value, depth + 1);
+    const found = findDeeplinkResult(value, depth + 1);
     if (found) return found;
   }
   return null;
@@ -90,10 +102,17 @@ function adTypeFor(displayFormat: string | null | undefined, creatives: MetaCrea
 // throwing, so the caller can show a clear "no media found" message instead
 // of a generic failure.
 export function parseAdSnapshot(raw: unknown): MetaAdManifest {
-  const archive = findAdArchive(raw);
-  if (!archive) {
+  const deeplinkResult = findDeeplinkResult(raw);
+  if (!deeplinkResult) {
     throw new Error("Could not find ad data in this page. Meta may have changed their page format.");
   }
+  if (!deeplinkResult.deeplink_ad_archive) {
+    throw new MetaAdUnavailableError(
+      "This ad is unavailable. It may have been deleted, or the link may be incorrect."
+    );
+  }
+
+  const archive = deeplinkResult.deeplink_ad_archive;
 
   const rawCards = [...(archive.snapshot.cards || []), ...(archive.snapshot.videos || [])];
   // A single-creative ad found in testing didn't always wrap its media in a
