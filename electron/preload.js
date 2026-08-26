@@ -15,4 +15,6 @@ contextBridge.exposeInMainWorld("desktop", {
       return () => ipcRenderer.removeListener("models:progress", handler);
     },
   },
+  chooseFolder: () => ipcRenderer.invoke("dialog:chooseFolder"),
+  defaultDownloadDir: () => ipcRenderer.invoke("dialog:defaultDownloadDir"),
 });
