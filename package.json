@@ -1,6 +1,8 @@
 {
   "name": "downcript",
   "version": "0.1.0",
+  "description": "Download, transcribe, and extract Meta ad creatives in one desktop app.",
+  "author": "Abhay Satpute",
   "private": true,
   "main": "electron/main.js",
   "engines": {

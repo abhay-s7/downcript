@@ -114,7 +114,7 @@ jobs:
       - name: Upload Windows installer artifact
         uses: actions/upload-artifact@v4
         with:
-          name: transcript-generator-windows-installer
+          name: downcript-windows-installer
           path: dist-electron/*.exe
           if-no-files-found: error
 
@@ -128,16 +128,16 @@ jobs:
         run: |
           $installer = Get-ChildItem -Path dist-electron -Filter *.exe | Select-Object -First 1
           if (-not $installer) { throw "No installer .exe found in dist-electron/" }
-          Write-Host "Installing $($installer.FullName) silently to C:\TGApp ..."
-          Start-Process -FilePath $installer.FullName -ArgumentList "/S", "/D=C:\TGApp" -Wait
+          Write-Host "Installing $($installer.FullName) silently to C:\DowncriptApp ..."
+          Start-Process -FilePath $installer.FullName -ArgumentList "/S", "/D=C:\DowncriptApp" -Wait
           # Non-recursive and excluding the uninstaller -- resources\py\**\*.exe
           # and resources\yt-dlp\**\*.exe also match *.exe recursively, and
           # would otherwise be picked up instead of the actual app launcher,
           # which NSIS installs directly at the root of the install dir.
-          $installedExe = Get-ChildItem -Path "C:\TGApp" -Filter "*.exe" -File |
+          $installedExe = Get-ChildItem -Path "C:\DowncriptApp" -Filter "*.exe" -File |
             Where-Object { $_.Name -notlike "Uninstall*" } |
             Select-Object -First 1
-          if (-not $installedExe) { throw "Installed app .exe not found under C:\TGApp" }
+          if (-not $installedExe) { throw "Installed app .exe not found under C:\DowncriptApp" }
           Write-Host "Installed app exe: $($installedExe.FullName)"
           echo "INSTALLED_EXE=$($installedExe.FullName)" >> $env:GITHUB_ENV
 
@@ -171,7 +171,7 @@ jobs:
       - name: Upload persisted app log
         if: always()
         shell: bash
-        run: cp "$APPDATA/transcript-youtube-app/logs/app.log" app-log.txt 2>/dev/null || echo "no app.log found"
+        run: cp "$APPDATA/downcript/logs/app.log" app-log.txt 2>/dev/null || echo "no app.log found"
 
       - uses: actions/upload-artifact@v4
         if: always()
