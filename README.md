@@ -59,13 +59,17 @@ Paste a Meta Ad Library URL (`https://www.facebook.com/ads/library/?id=...`). Th
    §17, Known limitations, for why).
 2. Detects whether it's a single video, a single image, or multiple creatives.
 3. Lets you download any creative, or all of them, into a `MetaAd_<id>/` folder.
-4. For any video creative, offers **Generate Transcript**, which writes TXT + DOCX + SRT directly
-   into that same folder — unlike the Transcript section, which exports on demand, Meta Ads
-   writes all three formats automatically once you ask for a transcript.
+4. For any video creative, offers **Download Video**, **Download Transcript**, and **Download
+   Video + Transcript**. A **Transcript Format** checkbox group (TXT/DOCX/SRT, plus a Select All
+   convenience checkbox — defaults to DOCX only) applies to every video creative in the panel,
+   including each video in a carousel; only the formats you have checked get written. Whisper
+   still runs once regardless of how many formats are selected — only the export step is
+   selective.
 
 ### 6. Video ads
 Downloaded as `MetaAd_<id>_Video.mp4` (or `_Creative_NN.mp4` if there's more than one creative).
-Transcript files, if generated, sit right next to it: `..._Transcript.txt/.docx/.srt`.
+Transcript files, if generated, sit right next to it — only for the format(s) you selected, e.g.
+`..._Transcript.docx` alone if that's all you checked.
 
 ### 7. Static image ads
 Downloaded at the best quality Meta's page exposes, as `MetaAd_<id>_Image.jpg` (or
