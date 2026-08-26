@@ -1,33 +1,21 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect } from "react";
 import { useDownloadQueue } from "@/app/hooks/useDownloadQueue";
+import { useOutputDir } from "@/app/hooks/useOutputDir";
 import DownloadInput from "@/app/components/DownloadInput";
 import DownloadCard from "@/app/components/DownloadCard";
 
 export default function DownloadPanel() {
   const queue = useDownloadQueue();
-  const [folder, setFolder] = useState<string | null>(null);
-  const [isDesktop, setIsDesktop] = useState(false);
+  const { outputDir, isDesktop, chooseFolder } = useOutputDir();
 
   useEffect(() => {
-    const desktop = window.desktop;
-    if (!desktop) return;
-
-    void (async () => {
-      setIsDesktop(true);
-      setFolder(await desktop.defaultDownloadDir());
-    })();
-  }, []);
-
-  async function handleChooseFolder() {
-    if (!window.desktop) return;
-    const chosen = await window.desktop.chooseFolder();
-    if (chosen) {
-      setFolder(chosen);
-      queue.setOutputDir(chosen);
-    }
-  }
+    queue.setOutputDir(outputDir);
+    // queue is a new object every render; only its stable setOutputDir
+    // callback (from useCallback) belongs in the dependency array.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [outputDir, queue.setOutputDir]);
 
   return (
     <div className="space-y-6">
@@ -35,9 +23,9 @@ export default function DownloadPanel() {
         <DownloadInput onSubmit={queue.addUrl} />
 
         <div className="mt-3 flex items-center gap-2 text-sm text-gray-500">
-          <span>Saving to: {folder || "Downloads/Downcript"}</span>
+          <span>Saving to: {outputDir || "Downloads/Downcript"}</span>
           {isDesktop && (
-            <button onClick={handleChooseFolder} className="text-blue-600 hover:underline">
+            <button onClick={chooseFolder} className="text-blue-600 hover:underline">
               Change
             </button>
           )}

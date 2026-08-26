@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useMetaQueue } from "@/app/hooks/useMetaQueue";
+import { useOutputDir } from "@/app/hooks/useOutputDir";
 import { OutputFormat } from "@/app/lib/jobs";
 import MetaAdInput from "@/app/components/MetaAdInput";
 import MetaAdCard from "@/app/components/MetaAdCard";
@@ -9,27 +10,15 @@ import OutputFormatToggle from "@/app/components/OutputFormatToggle";
 
 export default function MetaAdPanel() {
   const queue = useMetaQueue();
-  const [folder, setFolder] = useState<string | null>(null);
-  const [isDesktop, setIsDesktop] = useState(false);
+  const { outputDir, isDesktop, chooseFolder } = useOutputDir();
   const [outputFormat, setOutputFormat] = useState<OutputFormat>("hinglish");
 
   useEffect(() => {
-    const desktop = window.desktop;
-    if (!desktop) return;
-    void (async () => {
-      setIsDesktop(true);
-      setFolder(await desktop.defaultDownloadDir());
-    })();
-  }, []);
-
-  async function handleChooseFolder() {
-    if (!window.desktop) return;
-    const chosen = await window.desktop.chooseFolder();
-    if (chosen) {
-      setFolder(chosen);
-      queue.setOutputDir(chosen);
-    }
-  }
+    queue.setOutputDir(outputDir);
+    // queue is a new object every render; only its stable setOutputDir
+    // callback (from useCallback) belongs in the dependency array.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [outputDir, queue.setOutputDir]);
 
   if (!isDesktop) {
     return (
@@ -47,8 +36,8 @@ export default function MetaAdPanel() {
 
         <div className="mt-3 flex items-center justify-between text-sm text-gray-500">
           <div className="flex items-center gap-2">
-            <span>Saving to: {folder || "Downloads/Downcript"}</span>
-            <button onClick={handleChooseFolder} className="text-blue-600 hover:underline">
+            <span>Saving to: {outputDir || "Downloads/Downcript"}</span>
+            <button onClick={chooseFolder} className="text-blue-600 hover:underline">
               Change
             </button>
           </div>

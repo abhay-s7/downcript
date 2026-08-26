@@ -3,188 +3,38 @@
 import { useState } from "react";
 import Header from "@/app/components/Header";
 import ModelSetupBanner from "@/app/components/ModelSetupBanner";
-import SourceSelector from "@/app/components/SourceSelector";
-import YoutubeInput from "@/app/components/YoutubeInput";
-import InstagramInput from "@/app/components/InstagramInput";
-import DailymotionInput from "@/app/components/DailymotionInput";
-import UploadInput from "@/app/components/UploadInput";
-import GoogleDriveInput from "@/app/components/GoogleDriveInput";
-import ProcessingQueue from "@/app/components/ProcessingQueue";
-import TranscriptList from "@/app/components/TranscriptList";
-import TranscriptViewer from "@/app/components/TranscriptViewer";
+import HomeScreen from "@/app/components/HomeScreen";
 import DownloadPanel from "@/app/components/DownloadPanel";
+import TranscriptPanel from "@/app/components/TranscriptPanel";
 import MetaAdPanel from "@/app/components/MetaAdPanel";
-import { useTranscriptionQueue } from "@/app/hooks/useTranscriptionQueue";
-import {
-  OutputFormat,
-  createDailymotionJob,
-  createGoogleDriveJob,
-  createInstagramJob,
-  createUploadJob,
-  createYoutubeJob,
-} from "@/app/lib/jobs";
-import { Mode } from "@/app/lib/uiTypes";
+import SettingsPanel from "@/app/components/SettingsPanel";
+import { Section } from "@/app/lib/uiTypes";
 
-// Temporary top-level switch for manually testing the Download module ahead
-// of the real Home/Download/Transcript/Meta Ads/Settings navigation (a
-// separate, larger unification pass) — not the final nav.
 export default function Home() {
-  const [section, setSection] = useState<"transcript" | "download" | "meta">("transcript");
-  const [mode, setMode] = useState<Mode>("youtube");
-  const [outputFormat, setOutputFormat] = useState<OutputFormat>("original");
-  const [removedJobIds, setRemovedJobIds] = useState<Record<string, true>>({});
-  const [viewingJobId, setViewingJobId] = useState<string | null>(null);
-
-  const queue = useTranscriptionQueue();
-
-  const jobs = queue.jobs.filter((j) => !removedJobIds[j.id]);
-  const activeJobs = jobs.filter((j) => j.status !== "completed");
-  const completedJobs = jobs.filter((j) => j.status === "completed");
-  const viewingJob = viewingJobId ? jobs.find((j) => j.id === viewingJobId) ?? null : null;
-
-  function removeJob(id: string) {
-    setRemovedJobIds((prev) => ({ ...prev, [id]: true }));
-  }
-
-  function clearAllCompleted() {
-    setRemovedJobIds((prev) => {
-      const next = { ...prev };
-      for (const job of queue.jobs) {
-        if (job.status === "completed") next[job.id] = true;
-      }
-      return next;
-    });
-  }
+  const [section, setSection] = useState<Section>("home");
 
   return (
     <>
-      <Header />
+      <Header section={section} onNavigate={setSection} />
       <main className="flex-1">
         <div className="max-w-5xl mx-auto px-6 py-10">
           <ModelSetupBanner />
 
-          <div className="flex gap-2 mb-8 text-sm">
-            <button
-              onClick={() => setSection("transcript")}
-              className={`px-3 py-1.5 rounded-md font-medium ${section === "transcript" ? "bg-gray-900 text-white" : "text-gray-500 hover:bg-gray-100"}`}
-            >
-              Transcript
-            </button>
-            <button
-              onClick={() => setSection("download")}
-              className={`px-3 py-1.5 rounded-md font-medium ${section === "download" ? "bg-gray-900 text-white" : "text-gray-500 hover:bg-gray-100"}`}
-            >
-              Download
-            </button>
-            <button
-              onClick={() => setSection("meta")}
-              className={`px-3 py-1.5 rounded-md font-medium ${section === "meta" ? "bg-gray-900 text-white" : "text-gray-500 hover:bg-gray-100"}`}
-            >
-              Meta Ads
-            </button>
-          </div>
+          {section === "home" && <HomeScreen onNavigate={setSection} />}
+          {section === "settings" && <SettingsPanel />}
 
-          {section === "meta" ? (
-            <MetaAdPanel />
-          ) : section === "download" ? (
+          {/* Download/Transcript/Meta Ads stay mounted once visited so their
+              queues keep running in the background while you check another
+              section, instead of losing in-progress jobs on every switch. */}
+          <div className={section === "download" ? "" : "hidden"}>
             <DownloadPanel />
-          ) : viewingJob ? (
-            <TranscriptViewer
-              key={viewingJob.id}
-              job={viewingJob}
-              onBack={() => setViewingJobId(null)}
-            />
-          ) : (
-            <div className="space-y-10">
-              {jobs.length === 0 && (
-                <div className="text-center pt-4 pb-2">
-                  <h1 className="text-3xl sm:text-4xl font-semibold text-gray-900 tracking-tight mb-3">
-                    Turn any video into a clean transcript.
-                  </h1>
-                  <p className="text-gray-500 max-w-lg mx-auto">
-                    Transcribe videos from YouTube, Instagram, Dailymotion, your computer, or a
-                    public Google Drive folder.
-                  </p>
-                </div>
-              )}
-
-              <div>
-                <p className="text-sm font-medium text-gray-500 mb-3">
-                  What do you want to transcribe?
-                </p>
-                <div className="flex flex-col gap-5">
-                  <SourceSelector mode={mode} onChange={setMode} />
-
-                  <div className="rounded-lg border border-gray-200 bg-white p-6">
-                    {mode === "youtube" && (
-                      <YoutubeInput
-                        onSubmit={(url) => queue.addJobs([createYoutubeJob(url, outputFormat)])}
-                      />
-                    )}
-                    {mode === "instagram" && (
-                      <InstagramInput
-                        outputFormat={outputFormat}
-                        onOutputFormatChange={setOutputFormat}
-                        onSubmit={(url) =>
-                          queue.addJobs([createInstagramJob(url, outputFormat)])
-                        }
-                      />
-                    )}
-                    {mode === "dailymotion" && (
-                      <DailymotionInput
-                        outputFormat={outputFormat}
-                        onOutputFormatChange={setOutputFormat}
-                        onSubmit={(url) =>
-                          queue.addJobs([createDailymotionJob(url, outputFormat)])
-                        }
-                      />
-                    )}
-                    {mode === "upload" && (
-                      <UploadInput
-                        outputFormat={outputFormat}
-                        onOutputFormatChange={setOutputFormat}
-                        onSubmit={(files) =>
-                          queue.addJobs(files.map((f) => createUploadJob(f, outputFormat)))
-                        }
-                      />
-                    )}
-                    {mode === "drive" && (
-                      <GoogleDriveInput
-                        outputFormat={outputFormat}
-                        onOutputFormatChange={setOutputFormat}
-                        onSubmit={(files, resourceKey) =>
-                          queue.addJobs(
-                            files.map((f) => createGoogleDriveJob(f, resourceKey, outputFormat))
-                          )
-                        }
-                      />
-                    )}
-                  </div>
-                </div>
-              </div>
-
-              {activeJobs.length > 0 && (
-                <ProcessingQueue
-                  jobs={activeJobs}
-                  isProcessing={queue.isProcessing}
-                  onCancel={queue.cancelProcessing}
-                  onResume={queue.resume}
-                  onRetryFailed={queue.retryFailed}
-                  onRetryJob={queue.retryJob}
-                />
-              )}
-
-              {jobs.length > 0 && (
-                <TranscriptList
-                  jobs={completedJobs}
-                  isProcessing={queue.isProcessing}
-                  onOpen={setViewingJobId}
-                  onRemove={removeJob}
-                  onClearAll={clearAllCompleted}
-                />
-              )}
-            </div>
-          )}
+          </div>
+          <div className={section === "transcript" ? "" : "hidden"}>
+            <TranscriptPanel />
+          </div>
+          <div className={section === "meta" ? "" : "hidden"}>
+            <MetaAdPanel />
+          </div>
         </div>
       </main>
       <footer className="py-6 text-center text-xs text-gray-400">Made with ♥ by Abhay</footer>

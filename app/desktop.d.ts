@@ -20,6 +20,7 @@ export interface DesktopBridge {
   };
   chooseFolder: () => Promise<string | null>;
   defaultDownloadDir: () => Promise<string>;
+  openLogsFolder: () => Promise<void>;
   // Raw parsed JSON from the ad's embedded data-sjs script -- shape is
   // whatever Meta's Relay preload cache happens to contain, deliberately
   // untyped here; app/lib/services/meta does the shape search and validation.
