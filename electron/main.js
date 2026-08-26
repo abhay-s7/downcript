@@ -116,6 +116,11 @@ async function startLocalServer() {
     // app/lib/ytdlpRuntime.ts need to know this to refuse falling back to a
     // system python3/yt-dlp when packaged (see spawnTool above for why).
     ELECTRON_IS_PACKAGED: app.isPackaged ? "1" : "0",
+    // Default save location for the Download and Meta Ads modules (see
+    // app/lib/services/downloader/destination.ts) -- Electron's own
+    // per-platform Downloads folder, not guessable from inside the plain
+    // Node child process the server runs as.
+    DEFAULT_DOWNLOAD_DIR: path.join(app.getPath("downloads"), "Downcript"),
   };
 
   serverProcess = spawn(process.execPath, [serverPath], {
@@ -298,6 +303,18 @@ ipcMain.handle("models:ensure", (event) => {
 
   return modelDownloadInFlight;
 });
+
+// Renderer never gets direct filesystem access -- picking a save folder is a
+// main-process-only dialog, invoked over IPC and returning just the chosen
+// path (or null if the user cancelled).
+ipcMain.handle("dialog:chooseFolder", async () => {
+  const result = await dialog.showOpenDialog(mainWindow, {
+    properties: ["openDirectory", "createDirectory"],
+  });
+  return result.canceled ? null : result.filePaths[0];
+});
+
+ipcMain.handle("dialog:defaultDownloadDir", () => path.join(app.getPath("downloads"), "Downcript"));
 
 function createWindow() {
   mainWindow = new BrowserWindow({

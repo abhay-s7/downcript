@@ -3,13 +3,8 @@
 import { TranscriptionJob } from "@/app/lib/jobs";
 import { formatTranscriptAsParagraphs } from "@/app/lib/export";
 import { countWords, formatWordCount, getPreviewText } from "@/app/lib/textPreview";
+import { sanitizeFileBaseName } from "@/app/lib/services/filesystem/naming";
 import ExportMenu from "@/app/components/ExportMenu";
-
-function sanitizeFileBaseName(name: string): string {
-  const withoutExtension = name.replace(/\.[^/.]+$/, "");
-  const sanitized = withoutExtension.replace(/[\\/:*?"<>|]/g, "_").trim();
-  return sanitized || "transcript";
-}
 
 export default function TranscriptCard({
   job,

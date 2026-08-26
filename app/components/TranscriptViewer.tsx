@@ -3,13 +3,8 @@
 import { useState } from "react";
 import { OutputFormat, TranscriptionJob } from "@/app/lib/jobs";
 import { formatTranscriptAsParagraphs } from "@/app/lib/export";
+import { sanitizeFileBaseName } from "@/app/lib/services/filesystem/naming";
 import ExportMenu from "@/app/components/ExportMenu";
-
-function sanitizeFileBaseName(name: string): string {
-  const withoutExtension = name.replace(/\.[^/.]+$/, "");
-  const sanitized = withoutExtension.replace(/[\\/:*?"<>|]/g, "_").trim();
-  return sanitized || "transcript";
-}
 
 function highlight(text: string, query: string) {
   const trimmed = query.trim();

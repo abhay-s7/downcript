@@ -18,6 +18,8 @@ export interface DesktopBridge {
     ensure: () => Promise<{ ok: true }>;
     onProgress: (callback: (event: ModelProgressEvent) => void) => () => void;
   };
+  chooseFolder: () => Promise<string | null>;
+  defaultDownloadDir: () => Promise<string>;
 }
 
 declare global {

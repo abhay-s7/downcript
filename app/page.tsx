@@ -12,6 +12,7 @@ import GoogleDriveInput from "@/app/components/GoogleDriveInput";
 import ProcessingQueue from "@/app/components/ProcessingQueue";
 import TranscriptList from "@/app/components/TranscriptList";
 import TranscriptViewer from "@/app/components/TranscriptViewer";
+import DownloadPanel from "@/app/components/DownloadPanel";
 import { useTranscriptionQueue } from "@/app/hooks/useTranscriptionQueue";
 import {
   OutputFormat,
@@ -23,7 +24,11 @@ import {
 } from "@/app/lib/jobs";
 import { Mode } from "@/app/lib/uiTypes";
 
+// Temporary top-level switch for manually testing the Download module ahead
+// of the real Home/Download/Transcript/Meta Ads/Settings navigation (a
+// separate, larger unification pass) — not the final nav.
 export default function Home() {
+  const [section, setSection] = useState<"transcript" | "download">("transcript");
   const [mode, setMode] = useState<Mode>("youtube");
   const [outputFormat, setOutputFormat] = useState<OutputFormat>("original");
   const [removedJobIds, setRemovedJobIds] = useState<Record<string, true>>({});
@@ -56,7 +61,25 @@ export default function Home() {
       <main className="flex-1">
         <div className="max-w-5xl mx-auto px-6 py-10">
           <ModelSetupBanner />
-          {viewingJob ? (
+
+          <div className="flex gap-2 mb-8 text-sm">
+            <button
+              onClick={() => setSection("transcript")}
+              className={`px-3 py-1.5 rounded-md font-medium ${section === "transcript" ? "bg-gray-900 text-white" : "text-gray-500 hover:bg-gray-100"}`}
+            >
+              Transcript
+            </button>
+            <button
+              onClick={() => setSection("download")}
+              className={`px-3 py-1.5 rounded-md font-medium ${section === "download" ? "bg-gray-900 text-white" : "text-gray-500 hover:bg-gray-100"}`}
+            >
+              Download
+            </button>
+          </div>
+
+          {section === "download" ? (
+            <DownloadPanel />
+          ) : viewingJob ? (
             <TranscriptViewer
               key={viewingJob.id}
               job={viewingJob}
