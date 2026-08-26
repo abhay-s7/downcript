@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { TranscriptSegment } from "@/app/types";
@@ -7,36 +7,69 @@ import { convertToHinglish } from "@/app/lib/hinglish";
 import { NoAudioTrackError, transcribeVideoFile } from "@/app/lib/transcribeVideoFile";
 import { buildSingleDocxBuffer, buildSrt, buildTxt } from "@/app/lib/export";
 import { TranscriptFormat } from "@/app/lib/services/meta/types";
+import { downloadCreativeFile } from "@/app/lib/services/meta/downloadCreative";
+import { defaultDownloadDir } from "@/app/lib/services/downloader/destination";
 
 interface MetaTranscribeRequestBody {
   videoPath?: string;
+  videoUrl?: string;
+  outputDir?: string;
+  adArchiveId?: string;
   transcriptBaseName?: string;
   outputFormat?: "original" | "hinglish";
   formats?: TranscriptFormat[];
   jobId?: string;
 }
 
-// Writes exports directly next to the source video rather than waiting for
-// the user to pick a format from ExportMenu (Meta Ads has no on-demand
-// "click Export DOCX whenever" moment the way the main Transcript module
-// does), but -- unlike an earlier version of this route -- only for the
-// format(s) the user actually selected before generating, not all three
-// unconditionally. Whisper still runs exactly once regardless of how many
-// formats are selected; only the write step below is selective.
+// Writes exports directly next to where the video lives (or would live)
+// rather than waiting for the user to pick a format from ExportMenu, but
+// only for the format(s) actually selected -- Whisper still runs exactly
+// once regardless of how many formats are chosen; only the write step below
+// is selective.
+//
+// Two distinct callers, both handled here:
+// - The video was already downloaded and kept (videoPath given) -- used
+//   in place, never touched otherwise ("Download Video + Transcript").
+// - "Transcript Only": the video is NOT meant to be a kept output. videoUrl
+//   is fetched into a throwaway temp file, used for transcription, and
+//   deleted -- only the transcript export(s) end up in the ad's folder.
 export async function POST(req: NextRequest) {
   const body = (await req.json()) as MetaTranscribeRequestBody;
-  const { videoPath, transcriptBaseName, jobId } = body;
+  const { transcriptBaseName, jobId } = body;
   const trackingId = typeof jobId === "string" && jobId ? jobId : undefined;
   const outputFormat = body.outputFormat === "original" ? "original" : "hinglish";
   const formats: TranscriptFormat[] =
     Array.isArray(body.formats) && body.formats.length > 0 ? body.formats : ["docx"];
 
-  if (!videoPath || !transcriptBaseName) {
-    return NextResponse.json({ error: "Missing video path." }, { status: 400 });
+  if (!transcriptBaseName || (!body.videoPath && !body.videoUrl)) {
+    return NextResponse.json({ error: "Missing video." }, { status: 400 });
   }
 
   const workDir = await mkdtemp(path.join(tmpdir(), "meta-transcribe-"));
   try {
+    let videoPath = body.videoPath;
+    let exportDir: string;
+
+    if (videoPath) {
+      exportDir = path.dirname(videoPath);
+    } else {
+      if (!body.adArchiveId) {
+        return NextResponse.json({ error: "Missing ad reference." }, { status: 400 });
+      }
+      exportDir = path.join(body.outputDir || defaultDownloadDir(), `MetaAd_${body.adArchiveId}`);
+      await mkdir(exportDir, { recursive: true });
+
+      // Lives inside workDir, so the outer cleanup (finally, below) removes
+      // it too -- this is deliberately never a kept output.
+      try {
+        const result = await downloadCreativeFile(body.videoUrl!, path.join(workDir, "source.mp4"), trackingId);
+        videoPath = result.filePath;
+      } catch (err) {
+        console.error("Meta transcript-only fetch failed:", err);
+        return NextResponse.json({ error: "Unable to fetch this video for transcription." }, { status: 422 });
+      }
+    }
+
     const audioPath = path.join(workDir, "audio.wav");
 
     let segments: TranscriptSegment[];
@@ -60,20 +93,19 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    const dir = path.dirname(videoPath);
     const writtenPaths: Partial<Record<TranscriptFormat, string>> = {};
     const writes: Promise<unknown>[] = [];
 
     if (formats.includes("txt")) {
-      writtenPaths.txt = path.join(dir, `${transcriptBaseName}.txt`);
+      writtenPaths.txt = path.join(exportDir, `${transcriptBaseName}.txt`);
       writes.push(writeFile(writtenPaths.txt, buildTxt(transcriptBaseName, segments)));
     }
     if (formats.includes("docx")) {
-      writtenPaths.docx = path.join(dir, `${transcriptBaseName}.docx`);
+      writtenPaths.docx = path.join(exportDir, `${transcriptBaseName}.docx`);
       writes.push(buildSingleDocxBuffer(transcriptBaseName, segments).then((buf) => writeFile(writtenPaths.docx!, buf)));
     }
     if (formats.includes("srt")) {
-      writtenPaths.srt = path.join(dir, `${transcriptBaseName}.srt`);
+      writtenPaths.srt = path.join(exportDir, `${transcriptBaseName}.srt`);
       writes.push(writeFile(writtenPaths.srt, buildSrt(segments)));
     }
 
