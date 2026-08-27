@@ -1,4 +1,4 @@
-const { app, BrowserWindow, shell, dialog, ipcMain } = require("electron");
+const { app, BrowserWindow, shell, dialog, ipcMain, Notification } = require("electron");
 const path = require("node:path");
 const fs = require("node:fs");
 const net = require("node:net");
@@ -320,6 +320,20 @@ ipcMain.handle("dialog:defaultDownloadDir", () => path.join(app.getPath("downloa
 // message already points users to, without giving the renderer direct
 // filesystem access.
 ipcMain.handle("dialog:openLogsFolder", () => shell.showItemInFolder(LOG_FILE));
+
+// Purely visual: the renderer already plays its own bundled completion
+// chime (see app/lib/services/notifications/completionNotifier.ts), so this
+// is marked `silent` to avoid layering the OS's own notification sound on
+// top of it -- this notification exists only to be noticeable when the
+// window is unfocused/minimized, not as a second sound source.
+ipcMain.handle("notification:taskComplete", (_event, message) => {
+  if (!Notification.isSupported()) return;
+  new Notification({
+    title: "Downcript",
+    body: typeof message === "string" && message ? message : "Task completed successfully.",
+    silent: true,
+  }).show();
+});
 
 // Every facebook.com/ads/... URL -- including the lighter "preview" endpoints
 // -- sits behind a JS-executing bot-challenge page (confirmed: a plain HTTPS

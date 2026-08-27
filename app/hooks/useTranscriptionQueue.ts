@@ -2,6 +2,7 @@
 
 import { useCallback, useRef, useState } from "react";
 import { TranscriptionJob, cancelJobOnServer, runJob } from "@/app/lib/jobs";
+import { notifyTaskComplete } from "@/app/lib/services/notifications/completionNotifier";
 
 // A single shared queue + worker for every transcription source (upload,
 // YouTube, Instagram, Google Drive). Only one job is ever "processing" at a
@@ -56,6 +57,7 @@ export function useTranscriptionQueue() {
             transcript: result.transcript,
             originalTranscript: result.originalTranscript,
           });
+          notifyTaskComplete(`${next.fileName} finished transcribing.`);
         } catch (err) {
           if (controller.signal.aborted) {
             updateJob(next.id, { status: "cancelled" });

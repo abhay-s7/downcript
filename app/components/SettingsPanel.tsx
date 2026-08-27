@@ -1,9 +1,17 @@
 "use client";
 
+import { useState } from "react";
 import { useOutputDir } from "@/app/hooks/useOutputDir";
+import { isCompletionSoundEnabled, setCompletionSoundEnabled } from "@/app/lib/services/notifications/completionNotifier";
 
 export default function SettingsPanel() {
   const { outputDir, isDesktop, chooseFolder } = useOutputDir();
+  const [soundEnabled, setSoundEnabled] = useState(() => isCompletionSoundEnabled());
+
+  function handleToggleSound(checked: boolean) {
+    setSoundEnabled(checked);
+    setCompletionSoundEnabled(checked);
+  }
 
   return (
     <div className="space-y-6 max-w-2xl">
@@ -22,6 +30,24 @@ export default function SettingsPanel() {
         ) : (
           <p className="text-sm text-gray-400">Only available in the desktop app.</p>
         )}
+      </section>
+
+      <section className="rounded-lg border border-gray-200 bg-white p-6">
+        <h2 className="text-sm font-semibold text-gray-900 mb-1">Notifications</h2>
+        <p className="text-sm text-gray-500 mb-3">
+          Play a short sound when a download, transcript, or Meta Ad task finishes — useful when
+          the window isn&apos;t in focus. A batch (e.g. Download All on a carousel) plays one
+          sound when the whole batch is done, not once per file.
+        </p>
+        <label className="flex items-center gap-2 text-sm text-gray-700 cursor-pointer">
+          <input
+            type="checkbox"
+            checked={soundEnabled}
+            onChange={(e) => handleToggleSound(e.target.checked)}
+            className="accent-blue-600"
+          />
+          Completion sound
+        </label>
       </section>
 
       <section className="rounded-lg border border-gray-200 bg-white p-6">
