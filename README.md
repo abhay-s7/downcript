@@ -25,6 +25,10 @@ and extract an ad without one blocking the others.
 - Collision-safe file naming — nothing gets silently overwritten.
 - Choose where files save, per section or as a shared default (Settings).
 - Friendly error messages in the UI; technical details go to a debug log (Settings → View logs).
+- A short completion sound (toggleable in Settings, on by default, persists across restarts) when
+  a task finishes — once per logical task, not per internal step, and once per batch (e.g.
+  Download All on a carousel) rather than once per file. Silent on failure or cancellation. Also
+  shows a silent native OS notification as a visual backstop for when the window isn't focused.
 
 ## 3. Supported download sources
 
@@ -206,3 +210,8 @@ API routes, the same pattern the app inherited from its transcription pipeline.
   Dailymotion's bundled yt-dlp are smoke-tested on a real Windows machine today.
 - **Upload accepts MP4 only** (a deliberate, pre-existing scope limit, not new to this app).
 - **No manual language selection for transcription** — language is auto-detected per video.
+- **Completion-sound batch behavior (Meta Ads "Download All" on a multi-creative ad) was verified
+  by careful code tracing rather than a live end-to-end run** — Meta's ad collation was resolving
+  every test ad to a single creative on the day this was built, so a genuine multi-creative batch
+  couldn't be reproduced live in that session. Every other completion-sound path (single download,
+  transcript-only, the combo action, sound on/off, persistence, and cancel) was verified live.

@@ -9,6 +9,7 @@ import {
   fetchMediaInfoForCard,
   runDownloadJob,
 } from "@/app/lib/downloadJobs";
+import { notifyTaskComplete } from "@/app/lib/services/notifications/completionNotifier";
 
 // Mirrors useTranscriptionQueue's shape (sequential worker over a shared
 // ref, `cards` state kept in sync purely for render) but for downloads,
@@ -63,6 +64,7 @@ export function useDownloadQueue() {
             updateCard(next.id, patch)
           );
           updateCard(next.id, { status: "completed", filePath: result.filePath, fileName: result.fileName });
+          notifyTaskComplete(`${result.fileName} finished downloading.`);
         } catch (err) {
           if (controller.signal.aborted) {
             updateCard(next.id, { status: "cancelled" });

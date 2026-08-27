@@ -11,6 +11,7 @@ import {
   runMetaTranscribeJob,
 } from "@/app/lib/metaJobs";
 import { TranscriptFormat } from "@/app/lib/services/meta/types";
+import { notifyTaskComplete } from "@/app/lib/services/notifications/completionNotifier";
 
 type OutputFormat = "original" | "hinglish";
 
@@ -36,6 +37,32 @@ export function useMetaQueue() {
   const autoTranscribeRef = useRef<Map<string, { outputFormat: OutputFormat; formats: TranscriptFormat[] }>>(
     new Map()
   );
+  // "Download All" completion notification: a batch, not N independent
+  // tasks -- one sound when every member reaches a terminal state, not one
+  // per creative. batchMembersRef maps a creative id to the token of the
+  // batch it belongs to (only set for creatives enqueued by downloadAll);
+  // batchStateRef tracks each batch's remaining count and whether anything
+  // in it actually succeeded (a batch that's all failures/cancellations
+  // stays silent, same as a single failed/cancelled task would).
+  const batchMembersRef = useRef<Map<string, number>>(new Map());
+  const batchStateRef = useRef<Map<number, { remaining: number; anySucceeded: boolean }>>(new Map());
+  const nextBatchTokenRef = useRef(0);
+
+  function resolveBatchOutcome(creativeId: string, succeeded: boolean) {
+    const token = batchMembersRef.current.get(creativeId);
+    if (token === undefined) return false;
+    batchMembersRef.current.delete(creativeId);
+
+    const state = batchStateRef.current.get(token);
+    if (!state) return true;
+    state.remaining -= 1;
+    if (succeeded) state.anySucceeded = true;
+    if (state.remaining <= 0) {
+      batchStateRef.current.delete(token);
+      if (state.anySucceeded) notifyTaskComplete("Batch download completed.");
+    }
+    return true;
+  }
 
   const sync = useCallback(() => setGroups([...groupsRef.current]), []);
 
@@ -81,7 +108,16 @@ export function useMetaQueue() {
 
     updateCreative(groupId, creativeId, { transcriptStatus: "processing", transcriptError: undefined });
     void runMetaTranscribeJob(creative, outputFormat, formats, outputDirRef.current)
-      .then(() => updateCreative(groupId, creativeId, { transcriptStatus: "completed" }))
+      .then(() => {
+        updateCreative(groupId, creativeId, { transcriptStatus: "completed" });
+        // Covers both a standalone "Transcript Only" click and the tail end
+        // of "Download Video + Transcript" -- either way, this is always
+        // the true final step of whichever action the user asked for, so
+        // notifying unconditionally here is correct for both callers. The
+        // combo's own download-completion step is the one that suppresses
+        // itself (see the worker loop below) to avoid firing twice.
+        notifyTaskComplete(`Transcript ready for ${creative.fileName}.`);
+      })
       .catch((err) =>
         updateCreative(groupId, creativeId, {
           transcriptStatus: "failed",
@@ -126,16 +162,27 @@ export function useMetaQueue() {
             fileName: result.fileName,
           });
 
+          const wasBatchMember = resolveBatchOutcome(creative.id, true);
           const autoTranscribe = autoTranscribeRef.current.get(creative.id);
           if (autoTranscribe) {
             autoTranscribeRef.current.delete(creative.id);
+            // The combo's transcription step (startTranscription) fires its
+            // own notification when IT finishes -- this download completion
+            // is just the combo's first half, not the user's actual end
+            // goal, so it stays silent here.
             startTranscription(groupId, creative.id, autoTranscribe.outputFormat, autoTranscribe.formats);
+          } else if (!wasBatchMember) {
+            // A plain, standalone "Download Video" -- not part of a batch
+            // and not the download-half of a combo -- so this genuinely is
+            // the end of the task the user asked for.
+            notifyTaskComplete(`${result.fileName} finished downloading.`);
           }
         } catch (err) {
           // Download itself failed/was cancelled -- nothing to transcribe,
           // so don't leave a stale auto-transcribe request behind for a
           // possible future retry of this same creative id.
           autoTranscribeRef.current.delete(creative.id);
+          resolveBatchOutcome(creative.id, false);
           if (controller.signal.aborted) {
             updateCreative(groupId, creative.id, { status: "cancelled" });
           } else {
@@ -154,6 +201,11 @@ export function useMetaQueue() {
       setIsProcessing(false);
 
       if (cancelRequestedRef.current) {
+        for (const g of groupsRef.current) {
+          for (const c of g.creatives) {
+            if (c.status === "pending") resolveBatchOutcome(c.id, false);
+          }
+        }
         groupsRef.current = groupsRef.current.map((g) => ({
           ...g,
           creatives: g.creatives.map((c) => (c.status === "pending" ? { ...c, status: "cancelled" } : c)),
@@ -206,15 +258,26 @@ export function useMetaQueue() {
       cancelRequestedRef.current = false;
       const group = groupsRef.current.find((g) => g.id === groupId);
       if (!group) return;
+
+      const eligibleIds = group.creatives
+        .filter((c) => c.status === "ready" || c.status === "failed" || c.status === "cancelled")
+        .map((c) => c.id);
+
+      // One notification for the whole batch, not one per creative -- see
+      // batchMembersRef/batchStateRef and resolveBatchOutcome above.
+      if (eligibleIds.length > 0) {
+        const token = nextBatchTokenRef.current++;
+        batchStateRef.current.set(token, { remaining: eligibleIds.length, anySucceeded: false });
+        for (const id of eligibleIds) batchMembersRef.current.set(id, token);
+      }
+
       groupsRef.current = groupsRef.current.map((g) =>
         g.id !== groupId
           ? g
           : {
               ...g,
               creatives: g.creatives.map((c) =>
-                c.status === "ready" || c.status === "failed" || c.status === "cancelled"
-                  ? { ...c, status: "pending", error: undefined }
-                  : c
+                eligibleIds.includes(c.id) ? { ...c, status: "pending", error: undefined } : c
               ),
             }
       );
@@ -231,6 +294,11 @@ export function useMetaQueue() {
         currentAbortRef.current?.abort();
         cancelMetaJobOnServer(creativeId);
       } else {
+        // Not currently the active job (e.g. still queued) -- no UI path
+        // triggers this today (there's no cancel affordance for a merely
+        // "pending" card), but resolve batch bookkeeping defensively so a
+        // future caller can't leave a batch's counter stuck mid-flight.
+        resolveBatchOutcome(creativeId, false);
         updateCreative(groupId, creativeId, { status: "cancelled" });
       }
     },
