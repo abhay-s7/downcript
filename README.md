@@ -209,7 +209,13 @@ API routes, the same pattern the app inherited from its transcription pipeline.
   correctly and shown as unavailable, not confused with this collation behavior.
 - **macOS build is ad-hoc signed, not notarized, and arm64-only** (no Intel Mac support, no
   universal binary). Gatekeeper may warn on a machine stricter than the one this was built on.
-- **No auto-update.** Reinstalling is currently the only way to update.
+- **No auto-update.** Reinstalling is currently the only way to update — there is no
+  `electron-updater` dependency, no update-check code in `electron/main.js`, no `publish`
+  configuration, and no GitHub Releases are created (CI uploads the Windows `.exe` as a plain
+  build artifact via `--publish never`; macOS has no release CI at all). The macOS build is also
+  ad-hoc signed rather than notarized, which would block an update from applying even if the rest
+  were wired up. See [`docs/AUTO_UPDATE_HANDOFF.md`](docs/AUTO_UPDATE_HANDOFF.md) for the full
+  audit and a concrete implementation plan.
 - **CI does not yet cover the Download or Meta Ads modules** — only Upload transcription and
   Dailymotion's bundled yt-dlp are smoke-tested on a real Windows machine today.
 - **Upload accepts MP4 only** (a deliberate, pre-existing scope limit, not new to this app).
