@@ -76,8 +76,12 @@ Transcript files, if generated, sit right next to it — only for the format(s) 
 `..._Transcript.docx` alone if that's all you checked.
 
 ### 7. Static image ads
-Downloaded at the best quality Meta's page exposes, as `MetaAd_<id>_Image.jpg` (or
-`_Creative_NN.jpg`). Images are never sent through transcription.
+Downloaded at the best quality Meta's page exposes (the original creative, not a resized
+preview), as `MetaAd_<id>_Image.<ext>` (or `_Creative_NN.<ext>`) — the extension matches the
+actual image format (JPG/PNG/WebP/etc.), detected from the response if Meta's URL doesn't spell
+it out. A thumbnail preview shows in the queue before you download. Images are never sent through
+transcription, and video-only actions (Download Video / Transcript Only / Download Video +
+Transcript) never appear for an image creative.
 
 ### 8. Carousel ads
 Each creative downloads and (for videos) transcribes independently — one failing doesn't stop
