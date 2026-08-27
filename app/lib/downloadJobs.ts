@@ -5,19 +5,22 @@ import { detectPlatform } from "@/app/lib/services/downloader/platformDetection"
 export type DownloadFormatSelection = "audio" | "best" | { height: number };
 
 // "loading"/"info-error"/"ready" happen before a card ever enters the
-// download queue (mirrors Downly's analyze-then-pick-quality step); once the
-// user starts the actual download it moves through the same
-// pending/processing/completed/failed/cancelled vocabulary the transcription
-// queue uses, so one worker loop shape covers both.
+// download queue (mirrors Downly's analyze-then-pick-quality step). Once the
+// user starts the actual download it moves through queued -> preparing ->
+// downloading -> (processing, if yt-dlp needs to mux/extract locally after
+// the transfer) -> completed, or failed/cancelled/paused off that path.
 export type DownloadCardStatus =
   | "loading"
   | "info-error"
   | "ready"
-  | "pending"
+  | "queued"
+  | "preparing"
+  | "downloading"
   | "processing"
   | "completed"
   | "failed"
-  | "cancelled";
+  | "cancelled"
+  | "paused";
 
 export interface DownloadCard {
   id: string;
@@ -33,6 +36,11 @@ export interface DownloadCard {
   fileName?: string;
   filePath?: string;
   error?: string;
+  // Snapshot of the folder this job is (or was) downloading into, taken the
+  // moment the job starts -- so a job started before a later Settings folder
+  // change still displays (and, on resume/retry, targets) the folder it
+  // actually used, rather than silently following a change made afterward.
+  destinationDir?: string;
 }
 
 function newCardId(): string {
@@ -114,13 +122,23 @@ export async function runDownloadJob(
       if (!line.trim()) continue;
 
       const msg = JSON.parse(line) as YtDlpProgress & {
-        phase?: string;
+        phase?: "preparing" | "downloading" | "processing";
+        destinationDir?: string;
         error?: string;
         result?: RunDownloadJobResult;
       };
       if (msg.error) throw new Error(msg.error);
-      if (msg.result) result = msg.result;
-      else if (msg.phase) onProgress({ progress: msg });
+      if (msg.result) {
+        result = msg.result;
+        continue;
+      }
+      if (msg.phase === "preparing") {
+        onProgress({ status: "preparing", destinationDir: msg.destinationDir });
+      } else if (msg.phase === "downloading") {
+        onProgress({ status: "downloading", progress: msg });
+      } else if (msg.phase === "processing") {
+        onProgress({ status: "processing" });
+      }
     }
   }
 
@@ -135,4 +153,41 @@ export function cancelDownloadJobOnServer(jobId: string) {
     body: JSON.stringify({ jobId }),
     keepalive: true,
   }).catch(() => {});
+}
+
+const QUEUE_STORAGE_KEY = "downcript:downloadQueue";
+
+// Only metadata survives a reload -- live progress/speed is meaningless once
+// the process that produced it is gone, and a card still mid-analyze
+// ("loading") has nothing worth restoring. Anything that was actively
+// running at save-time is normalized to "paused": the underlying yt-dlp
+// process died with the app, but buildDestinationPath() is deterministic
+// from (outputDir, title, format), so Resume recomputes the same path and
+// picks up any partial file yt-dlp left behind, same as a live pause/resume.
+export function saveDownloadQueue(cards: DownloadCard[]): void {
+  try {
+    const persisted = cards
+      .filter((c) => c.status !== "loading")
+      .map((c) => ({
+        ...c,
+        progress: undefined,
+        status: (["preparing", "downloading", "processing"] as DownloadCardStatus[]).includes(c.status)
+          ? "paused"
+          : c.status,
+      }));
+    localStorage.setItem(QUEUE_STORAGE_KEY, JSON.stringify(persisted));
+  } catch {
+    // Storage unavailable/full -- the queue just won't survive a reload this session.
+  }
+}
+
+export function loadDownloadQueue(): DownloadCard[] {
+  try {
+    const stored = localStorage.getItem(QUEUE_STORAGE_KEY);
+    if (!stored) return [];
+    const parsed = JSON.parse(stored);
+    return Array.isArray(parsed) ? (parsed as DownloadCard[]) : [];
+  } catch {
+    return [];
+  }
 }

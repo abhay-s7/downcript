@@ -2,6 +2,9 @@
 
 import { DownloadCard as DownloadCardModel, DownloadFormatSelection } from "@/app/lib/downloadJobs";
 
+const SECONDARY_BUTTON =
+  "text-sm text-gray-600 border border-gray-300 rounded-md px-3 py-1 hover:bg-gray-50 hover:border-gray-400 transition-colors";
+
 function formatBytes(bytes?: number): string {
   if (!bytes) return "";
   const mb = bytes / 1024 / 1024;
@@ -19,6 +22,9 @@ export default function DownloadCard({
   card,
   onSetFormat,
   onStartDownload,
+  onPause,
+  onResume,
+  onRetryDownload,
   onCancel,
   onRetryInfo,
   onRemove,
@@ -26,6 +32,9 @@ export default function DownloadCard({
   card: DownloadCardModel;
   onSetFormat: (format: DownloadFormatSelection) => void;
   onStartDownload: () => void;
+  onPause: () => void;
+  onResume: () => void;
+  onRetryDownload: () => void;
   onCancel: () => void;
   onRetryInfo: () => void;
   onRemove: () => void;
@@ -91,9 +100,11 @@ export default function DownloadCard({
           </div>
         )}
 
-        {card.status === "pending" && <p className="text-sm text-gray-400 mt-1">Queued...</p>}
+        {card.status === "queued" && <p className="text-sm text-gray-400 mt-1">Queued...</p>}
 
-        {card.status === "processing" && (
+        {card.status === "preparing" && <p className="text-sm text-gray-400 mt-1">Preparing...</p>}
+
+        {card.status === "downloading" && (
           <div className="mt-2">
             <div className="h-1.5 rounded-full bg-gray-100 overflow-hidden">
               <div
@@ -104,36 +115,86 @@ export default function DownloadCard({
             <p className="text-xs text-gray-400 mt-1">
               {Math.floor(card.progress?.percent ?? 0)}%
               {card.progress?.speedBytesPerSec ? ` · ${formatBytes(card.progress.speedBytesPerSec)}/s` : ""}
+              {card.progress?.downloadedBytes && card.progress?.totalBytes
+                ? ` · ${formatBytes(card.progress.downloadedBytes)} / ${formatBytes(card.progress.totalBytes)}`
+                : ""}
             </p>
           </div>
         )}
 
+        {card.status === "processing" && (
+          <div className="mt-2">
+            <div className="h-1.5 rounded-full bg-gray-100 overflow-hidden">
+              <div className="h-full bg-blue-600 animate-pulse" style={{ width: "100%" }} />
+            </div>
+            <p className="text-xs text-gray-400 mt-1">Processing (merging/converting)...</p>
+          </div>
+        )}
+
         {card.status === "completed" && (
-          <p className="text-sm text-green-600 mt-1">Saved as {card.fileName}</p>
+          <div className="mt-1">
+            <p className="text-sm text-green-600">Saved as {card.fileName}</p>
+            {card.destinationDir && <p className="text-xs text-gray-400">{card.destinationDir}</p>}
+          </div>
         )}
 
         {card.status === "failed" && (
           <div className="mt-1">
             <p className="text-sm text-red-600">{card.error}</p>
-            <button onClick={onStartDownload} className="text-sm text-blue-600 hover:underline mt-1">
+            <button onClick={onRetryDownload} className="text-sm text-blue-600 hover:underline mt-1">
               Retry
             </button>
           </div>
         )}
 
-        {card.status === "cancelled" && <p className="text-sm text-gray-400 mt-1">Cancelled</p>}
+        {card.status === "cancelled" && (
+          <div className="mt-1">
+            <p className="text-sm text-gray-400">Cancelled</p>
+            <button onClick={onRetryDownload} className="text-sm text-blue-600 hover:underline mt-1">
+              Retry
+            </button>
+          </div>
+        )}
+
+        {card.status === "paused" && (
+          <div className="mt-1">
+            <p className="text-sm text-gray-500">Paused</p>
+            <button onClick={onResume} className="text-sm text-blue-600 hover:underline mt-1">
+              Resume
+            </button>
+          </div>
+        )}
       </div>
 
-      <div className="flex-shrink-0">
-        {card.status === "processing" ? (
+      <div className="flex-shrink-0 flex items-center gap-2">
+        {card.status === "downloading" && (
+          <>
+            <button onClick={onPause} className={SECONDARY_BUTTON}>
+              Pause
+            </button>
+            <button onClick={onCancel} className="text-sm text-gray-500 hover:text-gray-900">
+              Cancel
+            </button>
+          </>
+        )}
+        {(card.status === "preparing" || card.status === "processing") && (
           <button onClick={onCancel} className="text-sm text-gray-500 hover:text-gray-900">
             Cancel
           </button>
-        ) : (
-          <button onClick={onRemove} aria-label="Remove" className="text-sm text-gray-400 hover:text-gray-700">
-            ✕
+        )}
+        {card.status === "queued" && (
+          <button onClick={onCancel} className="text-sm text-gray-500 hover:text-gray-900">
+            Cancel
           </button>
         )}
+        {card.status !== "downloading" &&
+          card.status !== "preparing" &&
+          card.status !== "processing" &&
+          card.status !== "queued" && (
+            <button onClick={onRemove} aria-label="Remove" className="text-sm text-gray-400 hover:text-gray-700">
+              ✕
+            </button>
+          )}
       </div>
     </div>
   );

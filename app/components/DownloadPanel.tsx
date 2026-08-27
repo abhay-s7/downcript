@@ -34,12 +34,24 @@ export default function DownloadPanel() {
 
       {queue.cards.length > 0 && (
         <div className="space-y-3">
+          <div className="flex items-center justify-end gap-4 text-sm">
+            <button onClick={queue.clearCompleted} className="text-gray-500 hover:text-gray-800 hover:underline">
+              Clear completed
+            </button>
+            <button onClick={queue.clearAll} className="text-gray-500 hover:text-gray-800 hover:underline">
+              Clear all
+            </button>
+          </div>
+
           {queue.cards.map((card) => (
             <DownloadCard
               key={card.id}
               card={card}
               onSetFormat={(format) => queue.setFormat(card.id, format)}
               onStartDownload={() => queue.startDownload(card.id)}
+              onPause={() => queue.pauseDownload(card.id)}
+              onResume={() => queue.resumeDownload(card.id)}
+              onRetryDownload={() => queue.retryDownload(card.id)}
               onCancel={() => queue.cancelDownload(card.id)}
               onRetryInfo={() => queue.retryInfo(card.id)}
               onRemove={() => queue.removeCard(card.id)}
