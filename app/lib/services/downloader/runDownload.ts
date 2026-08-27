@@ -27,6 +27,12 @@ const DOWNLOAD_TIMEOUT_MS = 8 * 60 * 1000;
 const CONCURRENT_FRAGMENTS = 8;
 const KILL_GRACE_MS = 5000;
 const RESTRICTED_PATTERN = /unavailable|private|removed|restricted|geo.?block/i;
+// yt-dlp prints one of these tags once it's done pulling bytes and moves on
+// to local post-processing (muxing video+audio, extracting audio, fixing up
+// the container) -- genuinely distinct from "downloading" rather than a
+// cosmetic status, since percent-based progress has nothing left to report
+// during this phase.
+const POSTPROCESS_LINE = /^\[(Merger|ExtractAudio|VideoRemuxer|VideoConvertor|FixupM3u8|FixupM4a|Metadata)\]/;
 
 function buildFormatArgs(choice: DownloadFormatChoice): string[] {
   if (choice === "audio") {
@@ -51,7 +57,8 @@ export function runDownload(
   formatChoice: DownloadFormatChoice,
   jobId: string | undefined,
   log: (msg: string) => void,
-  onProgress?: (progress: YtDlpProgress) => void
+  onProgress?: (progress: YtDlpProgress) => void,
+  onPhase?: (phase: "processing") => void
 ): Promise<DownloadResult> {
   const finalPath = dedupeFilePath(destinationPath);
   const outTemplate = finalPath.replace(/\.[^/.]+$/, "") + ".%(ext)s";
@@ -110,6 +117,7 @@ export function runDownload(
     };
 
     let lastEmittedPercent = -1;
+    let postprocessAnnounced = false;
     child.stdout.on("data", (chunk: Buffer) => {
       const lines = chunk.toString().split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
       for (const line of lines) {
@@ -121,6 +129,11 @@ export function runDownload(
           log(`download progress: ${percent}%`);
           onProgress?.(progress);
           continue;
+        }
+        if (!postprocessAnnounced && POSTPROCESS_LINE.test(line)) {
+          postprocessAnnounced = true;
+          log(`entering post-processing: ${line}`);
+          onPhase?.("processing");
         }
         log(`yt-dlp stdout: ${line}`);
       }

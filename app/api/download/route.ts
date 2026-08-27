@@ -51,9 +51,19 @@ export async function POST(req: NextRequest) {
         await mkdir(outputDir, { recursive: true });
         const destinationPath = buildDestinationPath(outputDir, title, formatChoice);
 
-        send({ phase: "downloading" });
-        const result = await runDownload(url, destinationPath, formatChoice, trackingId, log, (progress) =>
-          send({ phase: "downloading", ...progress })
+        // Deterministic from (outputDir, title, formatChoice) -- a retry or a
+        // resume-after-pause recomputes this exact same path, letting yt-dlp's
+        // own default partial-file continuation pick up where it left off
+        // instead of starting over.
+        send({ phase: "preparing", destinationDir: outputDir });
+        const result = await runDownload(
+          url,
+          destinationPath,
+          formatChoice,
+          trackingId,
+          log,
+          (progress) => send({ phase: "downloading", ...progress }),
+          (phase) => send({ phase })
         );
 
         log(`download completed: ${result.filePath}`);

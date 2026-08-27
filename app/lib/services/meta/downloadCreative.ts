@@ -11,7 +11,9 @@ export class CreativeDownloadError extends Error {}
 function withExtension(filePath: string, ext: string): string {
   const dir = path.dirname(filePath);
   const base = path.basename(filePath, path.extname(filePath));
-  return path.join(dir, `${base}.${ext}`);
+  // Always a user-chosen destination outside the project tree -- same
+  // turbopackIgnore reasoning as dedupeFilePath.ts/destination.ts.
+  return path.join(/* turbopackIgnore: true */ dir, `${base}.${ext}`);
 }
 
 // Meta's CDN URLs are already direct file links (no site extraction needed,

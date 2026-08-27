@@ -3,14 +3,25 @@
 import { useState } from "react";
 import { useOutputDir } from "@/app/hooks/useOutputDir";
 import { isCompletionSoundEnabled, setCompletionSoundEnabled } from "@/app/lib/services/notifications/completionNotifier";
+import {
+  CONCURRENCY_OPTIONS,
+  getMaxConcurrentDownloads,
+  setMaxConcurrentDownloads,
+} from "@/app/lib/services/settings/downloadConcurrency";
 
 export default function SettingsPanel() {
   const { outputDir, isDesktop, chooseFolder } = useOutputDir();
   const [soundEnabled, setSoundEnabled] = useState(() => isCompletionSoundEnabled());
+  const [maxConcurrent, setMaxConcurrent] = useState(() => getMaxConcurrentDownloads());
 
   function handleToggleSound(checked: boolean) {
     setSoundEnabled(checked);
     setCompletionSoundEnabled(checked);
+  }
+
+  function handleConcurrencyChange(value: number) {
+    setMaxConcurrent(value);
+    setMaxConcurrentDownloads(value);
   }
 
   return (
@@ -30,6 +41,28 @@ export default function SettingsPanel() {
         ) : (
           <p className="text-sm text-gray-400">Only available in the desktop app.</p>
         )}
+      </section>
+
+      <section className="rounded-lg border border-gray-200 bg-white p-6">
+        <h2 className="text-sm font-semibold text-gray-900 mb-1">Downloads</h2>
+        <p className="text-sm text-gray-500 mb-3">
+          How many downloads can run at the same time. A higher number finishes a batch faster but
+          uses more bandwidth and CPU per download.
+        </p>
+        <div className="flex items-center gap-2 text-sm text-gray-700">
+          <span>Simultaneous downloads:</span>
+          <select
+            value={maxConcurrent}
+            onChange={(e) => handleConcurrencyChange(Number(e.target.value))}
+            className="rounded-md border border-gray-300 text-sm px-2 py-1"
+          >
+            {CONCURRENCY_OPTIONS.map((n) => (
+              <option key={n} value={n}>
+                {n}
+              </option>
+            ))}
+          </select>
+        </div>
       </section>
 
       <section className="rounded-lg border border-gray-200 bg-white p-6">
