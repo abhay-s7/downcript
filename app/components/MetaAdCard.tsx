@@ -45,6 +45,18 @@ function CreativeRow({
         <span className="text-xs font-medium text-gray-500 bg-gray-100 rounded px-1.5 py-0.5 w-14 text-center flex-shrink-0">
           {creative.kind === "video" ? "Video" : "Image"}
         </span>
+        {creative.kind === "image" && (
+          // eslint-disable-next-line @next/next/no-img-element -- direct Meta CDN URL, not a local/optimizable asset
+          <img
+            src={creative.url}
+            alt=""
+            referrerPolicy="no-referrer"
+            className="h-9 w-9 rounded object-cover flex-shrink-0 bg-gray-100"
+            onError={(e) => {
+              e.currentTarget.style.display = "none";
+            }}
+          />
+        )}
         {label && <span className="text-sm text-gray-400 flex-shrink-0">{label}</span>}
         <span className="text-sm text-gray-700 truncate flex-1">{creative.fileName}</span>
 
@@ -64,7 +76,7 @@ function CreativeRow({
 
           {creative.kind === "image" && creative.status === "ready" && (
             <button onClick={onDownload} className={PRIMARY_BUTTON}>
-              Download
+              Download Image
             </button>
           )}
           {creative.status === "pending" && <span className="text-sm text-gray-400">Queued...</span>}

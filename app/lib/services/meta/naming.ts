@@ -1,14 +1,38 @@
 import { MetaAdManifest, MetaCreative } from "@/app/lib/services/meta/types";
 
-function extensionFor(creative: MetaCreative): string {
+// Meta's CDN URLs are almost always a signed link with a real extension in
+// the path (before the query string), but this isn't guaranteed -- returns
+// null rather than guessing, so callers can tell "found in the URL" apart
+// from "had to fall back," and downloadCreative.ts can use that to decide
+// whether it's worth sniffing the response's Content-Type instead.
+export function extensionFromUrl(url: string): string | null {
   try {
-    const pathname = new URL(creative.url).pathname;
+    const pathname = new URL(url).pathname;
     const match = pathname.match(/\.([a-zA-Z0-9]{2,4})$/);
-    if (match) return match[1].toLowerCase();
+    return match ? match[1].toLowerCase() : null;
   } catch {
-    // fall through to kind-based default
+    return null;
   }
-  return creative.kind === "video" ? "mp4" : "jpg";
+}
+
+// Only used once the URL itself gave no reliable extension -- see
+// downloadCreative.ts, which sniffs the actual HTTP response for this rather
+// than blindly writing every image as .jpg.
+export const CONTENT_TYPE_EXTENSIONS: Record<string, string> = {
+  "image/jpeg": "jpg",
+  "image/jpg": "jpg",
+  "image/png": "png",
+  "image/webp": "webp",
+  "image/gif": "gif",
+  "image/avif": "avif",
+  "image/bmp": "bmp",
+  "video/mp4": "mp4",
+  "video/quicktime": "mov",
+  "video/webm": "webm",
+};
+
+function extensionFor(creative: MetaCreative): string {
+  return extensionFromUrl(creative.url) ?? (creative.kind === "video" ? "mp4" : "jpg");
 }
 
 export function metaAdFolderName(adArchiveId: string): string {
