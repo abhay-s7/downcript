@@ -13,6 +13,7 @@ import {
   saveDownloadQueue,
 } from "@/app/lib/downloadJobs";
 import { getMaxConcurrentDownloads } from "@/app/lib/services/settings/downloadConcurrency";
+import { getNamingTemplate } from "@/app/lib/services/settings/namingPreference";
 import { notifyTaskComplete } from "@/app/lib/services/notifications/completionNotifier";
 import { registerLibraryEntry } from "@/app/lib/services/library/libraryClient";
 import { kindForExtension } from "@/app/lib/services/library/types";
@@ -77,7 +78,17 @@ export function useDownloadQueue() {
     const next = cardsRef.current.find((c) => c.status === "queued");
     if (!next) return null;
     cardsRef.current = cardsRef.current.map((c) =>
-      c.id === next.id ? { ...c, status: "preparing" as const, error: undefined, progress: undefined } : c
+      c.id === next.id
+        ? {
+            ...c,
+            status: "preparing" as const,
+            error: undefined,
+            progress: undefined,
+            // Locked in on the first attempt only -- see
+            // DownloadCard.namingTemplate's own comment for why.
+            namingTemplate: c.namingTemplate ?? getNamingTemplate(),
+          }
+        : c
     );
     sync();
     return cardsRef.current.find((c) => c.id === next.id) ?? null;

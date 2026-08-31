@@ -1,4 +1,6 @@
 import { MetaAdManifest, MetaCreative } from "@/app/lib/services/meta/types";
+import { buildMediaBaseName } from "@/app/lib/services/filesystem/naming";
+import { getNamingTemplate } from "@/app/lib/services/settings/namingPreference";
 
 // Meta's CDN URLs are almost always a signed link with a real extension in
 // the path (before the query string), but this isn't guaranteed -- returns
@@ -35,28 +37,42 @@ function extensionFor(creative: MetaCreative): string {
   return extensionFromUrl(creative.url) ?? (creative.kind === "video" ? "mp4" : "jpg");
 }
 
+// Files still live inside a MetaAd_<id>/ folder (unchanged -- that grouping
+// is genuinely useful for a carousel's several creatives and isn't really a
+// "filename" concern), but the filename itself now goes through the same
+// smart-naming service every other module uses: the advertiser's page name
+// as creator, the creative's own title when Meta happened to provide one
+// (rare) else "Ad <id>" as the title, and "Meta Ads" as platform.
 export function metaAdFolderName(adArchiveId: string): string {
   return `MetaAd_${adArchiveId}`;
 }
 
-// Single-creative ads get the brief's flat MetaAd_<id>_Video.mp4 /
-// MetaAd_<id>_Image.jpg naming; carousels (or DCO's multiple variants) get
-// MetaAd_<id>_Creative_01.ext, _02.ext, ... so every asset in the folder is
-// unambiguously tied back to its ad and position.
-export function metaCreativeFileName(manifest: MetaAdManifest, creative: MetaCreative): string {
-  const ext = extensionFor(creative);
-  if (manifest.creatives.length === 1) {
-    const label = creative.kind === "video" ? "Video" : "Image";
-    return `MetaAd_${manifest.adArchiveId}_${label}.${ext}`;
-  }
-  const index = String(creative.index).padStart(2, "0");
-  return `MetaAd_${manifest.adArchiveId}_Creative_${index}.${ext}`;
+function adSmartBase(manifest: MetaAdManifest, creative: MetaCreative): string {
+  const title = creative.title?.trim() || `Ad ${manifest.adArchiveId}`;
+  return buildMediaBaseName(
+    { title, creator: manifest.pageName, platform: "Meta Ads" },
+    getNamingTemplate()
+  );
 }
 
-export function metaTranscriptBaseName(manifest: MetaAdManifest, creative: MetaCreative): string {
-  if (manifest.creatives.length === 1) {
-    return `MetaAd_${manifest.adArchiveId}_Transcript`;
-  }
+// Single-creative ads get a flat "<base>.ext"; carousels (or DCO's multiple
+// variants) get "<base> - Creative 01.ext", "- Creative 02.ext", ... so
+// every asset in the folder is still unambiguously tied to its position.
+export function metaCreativeFileName(manifest: MetaAdManifest, creative: MetaCreative): string {
+  const ext = extensionFor(creative);
+  const base = adSmartBase(manifest, creative);
+  if (manifest.creatives.length === 1) return `${base}.${ext}`;
   const index = String(creative.index).padStart(2, "0");
-  return `MetaAd_${manifest.adArchiveId}_Creative_${index}_Transcript`;
+  return `${base} - Creative ${index}.${ext}`;
+}
+
+// Deliberately the SAME base as metaCreativeFileName (no "_Transcript"
+// suffix) -- a transcript/subtitle sharing its video's exact base name,
+// differing only by extension, is what lets most video players auto-load a
+// same-named .srt alongside the .mp4.
+export function metaTranscriptBaseName(manifest: MetaAdManifest, creative: MetaCreative): string {
+  const base = adSmartBase(manifest, creative);
+  if (manifest.creatives.length === 1) return base;
+  const index = String(creative.index).padStart(2, "0");
+  return `${base} - Creative ${index}`;
 }

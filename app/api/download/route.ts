@@ -8,14 +8,24 @@ import {
   runDownload,
 } from "@/app/lib/services/downloader/runDownload";
 import { buildDestinationPath, defaultDownloadDir } from "@/app/lib/services/downloader/destination";
+import { NamingTemplate } from "@/app/lib/services/filesystem/naming";
 
 interface DownloadRequestBody {
   url?: string;
   title?: string;
+  creator?: string;
+  platform?: string;
+  namingTemplate?: NamingTemplate;
   jobId?: string;
   outputDir?: string;
   format?: "audio" | "best" | "height";
   height?: number;
+}
+
+function parseNamingTemplate(value: unknown): NamingTemplate {
+  return value === "title" || value === "creator-title" || value === "creator-title-platform"
+    ? value
+    : "creator-title";
 }
 
 function parseFormatChoice(body: DownloadRequestBody): DownloadFormatChoice {
@@ -40,6 +50,8 @@ export async function POST(req: NextRequest) {
   const outputDir = body.outputDir || defaultDownloadDir();
   const title = body.title?.trim() || "download";
   const formatChoice = parseFormatChoice(body);
+  const nameParts = { title, creator: body.creator, platform: body.platform };
+  const namingTemplate = parseNamingTemplate(body.namingTemplate);
 
   const encoder = new TextEncoder();
   const stream = new ReadableStream<Uint8Array>({
@@ -49,12 +61,14 @@ export async function POST(req: NextRequest) {
 
       try {
         await mkdir(outputDir, { recursive: true });
-        const destinationPath = buildDestinationPath(outputDir, title, formatChoice);
+        const destinationPath = buildDestinationPath(outputDir, nameParts, formatChoice, namingTemplate);
 
-        // Deterministic from (outputDir, title, formatChoice) -- a retry or a
-        // resume-after-pause recomputes this exact same path, letting yt-dlp's
-        // own default partial-file continuation pick up where it left off
-        // instead of starting over.
+        // Deterministic from (outputDir, nameParts, formatChoice,
+        // namingTemplate) -- a retry or a resume-after-pause recomputes this
+        // exact same path (the client locks namingTemplate onto the card so
+        // it can't drift between attempts -- see DownloadCard.namingTemplate),
+        // letting yt-dlp's own default partial-file continuation pick up
+        // where it left off instead of starting over.
         send({ phase: "preparing", destinationDir: outputDir });
         const result = await runDownload(
           url,

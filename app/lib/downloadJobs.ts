@@ -1,6 +1,8 @@
 import { MediaFormat } from "@/app/lib/services/downloader/types";
 import { YtDlpProgress } from "@/app/lib/services/downloader/ytdlpProgress";
 import { detectPlatform } from "@/app/lib/services/downloader/platformDetection";
+import { NamingTemplate } from "@/app/lib/services/filesystem/naming";
+import { getNamingTemplate } from "@/app/lib/services/settings/namingPreference";
 
 export type DownloadFormatSelection = "audio" | "best" | { height: number };
 
@@ -28,6 +30,9 @@ export interface DownloadCard {
   platform: string;
   status: DownloadCardStatus;
   title?: string;
+  // The uploader/channel/account name, when yt-dlp reports one -- the
+  // "Creator" half of the smart-naming templates below.
+  creator?: string;
   thumbnail?: string;
   duration?: number;
   formats?: MediaFormat[];
@@ -41,6 +46,12 @@ export interface DownloadCard {
   // change still displays (and, on resume/retry, targets) the folder it
   // actually used, rather than silently following a change made afterward.
   destinationDir?: string;
+  // Same snapshot-once-then-reuse idea as destinationDir, for the naming
+  // template: locked in the moment a job first starts, so a retry/resume
+  // recomputes the exact same destination path (letting yt-dlp's own
+  // partial-file continuation work) even if the user changes the naming
+  // preference in Settings in between attempts.
+  namingTemplate?: NamingTemplate;
 }
 
 function newCardId(): string {
@@ -61,7 +72,7 @@ export function createDownloadCard(url: string): DownloadCard {
 
 export async function fetchMediaInfoForCard(
   url: string
-): Promise<{ title: string; thumbnail?: string; duration?: number; formats: MediaFormat[] }> {
+): Promise<{ title: string; thumbnail?: string; duration?: number; formats: MediaFormat[]; creator?: string }> {
   const res = await fetch("/api/download-info", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -69,7 +80,10 @@ export async function fetchMediaInfoForCard(
   });
   const data = await res.json();
   if (!res.ok) throw new Error(data.error || "Unable to process this URL.");
-  return data;
+  // The route's MediaInfo shape calls this field "uploader" (yt-dlp's own
+  // term); renamed to "creator" here to match the naming service's
+  // vocabulary, used everywhere else in the app.
+  return { title: data.title, thumbnail: data.thumbnail, duration: data.duration, formats: data.formats, creator: data.uploader };
 }
 
 export interface RunDownloadJobResult {
@@ -92,6 +106,13 @@ export async function runDownloadJob(
     body: JSON.stringify({
       url: card.url,
       title: card.title || card.platform,
+      creator: card.creator,
+      platform: card.platform,
+      // Locked in once on the card (see DownloadCard.namingTemplate) rather
+      // than re-read from Settings on every attempt, so a retry/resume
+      // recomputes the identical destination path even if the naming
+      // preference changes in between.
+      namingTemplate: card.namingTemplate ?? getNamingTemplate(),
       jobId: card.id,
       outputDir,
       format: card.selectedFormat === "audio" ? "audio" : card.selectedFormat === "best" ? "best" : "height",
@@ -162,7 +183,9 @@ const QUEUE_STORAGE_KEY = "downcript:downloadQueue";
 // ("loading") has nothing worth restoring. Anything that was actively
 // running at save-time is normalized to "paused": the underlying yt-dlp
 // process died with the app, but buildDestinationPath() is deterministic
-// from (outputDir, title, format), so Resume recomputes the same path and
+// from (outputDir, nameParts, format, namingTemplate) -- and namingTemplate
+// is locked onto the card the first time it's claimed (see
+// DownloadCard.namingTemplate) -- so Resume recomputes the same path and
 // picks up any partial file yt-dlp left behind, same as a live pause/resume.
 export function saveDownloadQueue(cards: DownloadCard[]): void {
   try {

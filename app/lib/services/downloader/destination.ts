@@ -1,6 +1,6 @@
 import path from "node:path";
 import os from "node:os";
-import { sanitizeFileBaseName } from "@/app/lib/services/filesystem/naming";
+import { buildMediaBaseName, MediaNameParts, NamingTemplate } from "@/app/lib/services/filesystem/naming";
 import { DownloadFormatChoice } from "@/app/lib/services/downloader/runDownload";
 
 // ~/Downloads/Downcript by default, matching Downly's ~/Downloads/Downly
@@ -13,11 +13,12 @@ export function defaultDownloadDir(): string {
 
 export function buildDestinationPath(
   outputDir: string,
-  title: string,
-  formatChoice: DownloadFormatChoice
+  nameParts: MediaNameParts,
+  formatChoice: DownloadFormatChoice,
+  namingTemplate: NamingTemplate
 ): string {
   const ext = formatChoice === "audio" ? "mp3" : "mp4";
-  const base = sanitizeFileBaseName(title).slice(0, 100);
+  const base = buildMediaBaseName(nameParts, namingTemplate);
   // Genuinely dynamic user-chosen destination, not a project-relative
   // lookup -- same reasoning as ytdlpRuntime.ts's existsSync calls, opting
   // out of Turbopack's build-time tracing rather than pulling the whole
