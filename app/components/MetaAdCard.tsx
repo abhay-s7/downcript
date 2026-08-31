@@ -2,6 +2,12 @@
 
 import { MetaAdGroup, MetaCreativeJob } from "@/app/lib/metaJobs";
 
+function formatBytes(bytes?: number): string {
+  if (!bytes) return "";
+  const mb = bytes / 1024 / 1024;
+  return mb >= 1024 ? `${(mb / 1024).toFixed(1)} GB` : `${mb.toFixed(1)} MB`;
+}
+
 const BUTTON_BASE =
   "inline-flex items-center justify-center h-9 px-4 rounded-md text-sm font-medium transition-colors whitespace-nowrap";
 const PRIMARY_BUTTON = `${BUTTON_BASE} bg-blue-600 text-white hover:bg-blue-700 disabled:bg-gray-200 disabled:text-gray-400 disabled:cursor-not-allowed`;
@@ -83,6 +89,9 @@ function CreativeRow({
           {creative.status === "processing" && (
             <span className="text-sm text-gray-500">
               {Math.floor(creative.progress?.percent ?? 0)}%
+              {creative.progress?.downloadedBytes && creative.progress?.totalBytes
+                ? ` (${formatBytes(creative.progress.downloadedBytes)} / ${formatBytes(creative.progress.totalBytes)})`
+                : ""}
               <button onClick={onCancel} className="ml-2 text-gray-400 hover:text-gray-700">
                 Cancel
               </button>
@@ -99,9 +108,12 @@ function CreativeRow({
             </>
           )}
           {creative.status === "cancelled" && (
-            <button onClick={onDownload} className={SECONDARY_BUTTON}>
-              Retry
-            </button>
+            <>
+              <span className="text-sm text-gray-400">Cancelled</span>
+              <button onClick={onDownload} className={SECONDARY_BUTTON}>
+                Retry
+              </button>
+            </>
           )}
         </div>
       </div>

@@ -25,8 +25,10 @@ and extract an ad without one blocking the others.
 - Real pause/resume, cancel (the underlying process is actually killed, not just abandoned), and
   retry — a paused/retried download picks back up via yt-dlp's own partial-file continuation
   rather than restarting from zero.
-- A persistent, searchable **Media Library** (§9) collecting everything downloaded or generated,
+- A persistent, searchable **Media Library** (§10) collecting everything downloaded or generated,
   independent of any one tab's own queue.
+- Paste (or import a TXT/CSV of) many Meta Ad Library URLs at once and queue them all in a batch
+  (§9), instead of adding them one at a time.
 - Collision-safe file naming — nothing gets silently overwritten.
 - Choose where files save, per section or as a shared default (Settings).
 - Friendly error messages in the UI; technical details go to a debug log (Settings → View logs).
@@ -65,7 +67,7 @@ queue. Cancel stops the actual ffmpeg/Whisper/yt-dlp process for that job, not j
 Paste a Meta Ad Library URL (`https://www.facebook.com/ads/library/?id=...`). The app:
 
 1. Resolves the ad — this specifically requires the desktop app, not a browser tab (see
-   §18, Known limitations, for why).
+   §19, Known limitations, for why).
 2. Detects whether it's a single video, a single image, or multiple creatives.
 3. Lets you download any creative, or all of them, into a `MetaAd_<id>/` folder.
 4. For any video creative, offers **Download Video**, **Download Transcript**, and **Download
@@ -95,7 +97,23 @@ the rest. Note: Meta also uses multiple `cards` for **Dynamic Creative Optimizat
 creatives, distinguished from a true carousel using Meta's own `display_format` field where
 available.
 
-## 9. Media Library
+### 9. Batch ad downloading
+
+Expand **"Batch add multiple ads"** under the Meta Ads input to paste many Ad Library URLs at
+once — one per line, or separated by spaces/commas — or import a `.txt`/`.csv` list (read directly
+in the browser, no extra dialog needed). Click **Preview** first: every line is classified as
+Valid, Duplicate, Invalid, or Unsupported *before* anything is queued, with counts and a reason
+for each non-valid line — an "Invalid" URL (not a URL at all, or missing `?id=`) is called out
+separately from an "Unsupported" one (a real URL, just not a Meta Ad Library link, e.g. a
+YouTube link pasted by mistake). Duplicates are detected both within the pasted batch and against
+ad IDs already in the queue, so re-pasting a list you already added doesn't create dozens of
+repeat downloads. Only **Add N to queue** actually enqueues anything, and every ad it adds goes
+through the exact same per-ad resolve → download pipeline as the single-URL input, processed
+independently — one ad failing or being cancelled never stops or affects the others. A **Clear
+completed** button removes any ad whose every creative (all of a carousel's, not just one) has
+finished downloading.
+
+## 10. Media Library
 
 Everything Download, Meta Ads, and Transcript's export buttons produce is automatically collected
 into one searchable **Library** (top nav), persisted in a JSON file under the app's own data
@@ -116,24 +134,24 @@ folder — it survives restarts, independent of any one tab's own queue.
   and — for a completed video entry — **Transcribe**, which reuses the same transcription route
   Meta Ads' video creatives already use.
 - **Thumbnails** show only when already known from elsewhere (e.g. yt-dlp's own thumbnail for a
-  Download entry) — the Library does not generate thumbnails itself (see §18).
+  Download entry) — the Library does not generate thumbnails itself (see §19).
 
-## 10. Windows installation
+## 11. Windows installation
 
 Run the installer (`Downcript Setup.exe`), choose an install location, and launch. No other
 software needs to be installed first.
 
-## 11. macOS installation
+## 12. macOS installation
 
 Open the `.dmg`, drag Downcript to Applications. The build is currently **ad-hoc signed, not
-notarized, and Apple Silicon (arm64) only** — see §18.
+notarized, and Apple Silicon (arm64) only** — see §19.
 
-## 12. Usage instructions
+## 13. Usage instructions
 
 Launch the app → pick a starting point from Home (or use the top nav) → paste a link or choose a
 file → follow the on-screen queue. Settings lets you change where files save by default.
 
-## 13. Troubleshooting
+## 14. Troubleshooting
 
 The app shows plain-language errors ("Unable to process this URL...") and keeps the technical
 detail (exit codes, stderr, stack traces) in a log file — Settings → **View logs**. If something
@@ -145,11 +163,11 @@ fails:
   need periodic yt-dlp updates over the app's lifetime.
 - **Meta Ads fails to resolve an ad** — either the ad genuinely doesn't exist/was deleted (the app
   shows this distinctly), or Meta changed their page format, which will need an app update to fix
-  (see §18).
+  (see §19).
 - **"Meta Ads extraction needs to run inside the desktop app"** — you're viewing this in a plain
   browser tab during development; run the actual desktop app instead.
 
-## 14. Development setup
+## 15. Development setup
 
 ```bash
 npm install
@@ -162,7 +180,7 @@ Requires Node.js ≥20 for development. A local Python 3 with `faster-whisper`, 
 `yt-dlp` (see `requirements.txt`) lets `electron:dev`/`dev` fall back to system tools instead of
 the frozen binaries — only needed for development, never for a packaged install.
 
-## 15. Build commands
+## 16. Build commands
 
 | Command | What it does |
 |---|---|
@@ -172,7 +190,7 @@ the frozen binaries — only needed for development, never for a packaged instal
 | `npm run dist:mac` | Full macOS pipeline: build → build:python → download yt-dlp (darwin) → verify → package `.dmg` (arm64) |
 | `npm run dist:win` | Same, for Windows (x64 NSIS installer) — **must run on an actual Windows machine**, not cross-compiled from macOS/Linux |
 
-## 16. Packaging
+## 17. Packaging
 
 Electron-builder handles both targets (config lives in `package.json`'s `build` key). The actual
 Next.js server, the frozen Python tools, and the yt-dlp binary are injected via
@@ -184,9 +202,9 @@ CI: `.github/workflows/windows-build.yml` builds, packages, silent-installs, and
 real Windows installer on `windows-latest` (the only reliable way to verify a Windows build, since
 PyInstaller/ffmpeg-static can't cross-compile from macOS). It currently covers Upload
 transcription and Dailymotion's bundled `yt-dlp.exe` — it does not yet cover the Download or Meta
-Ads modules; see §18.
+Ads modules; see §19.
 
-## 17. Project architecture
+## 18. Project architecture
 
 ```
 app/
@@ -209,7 +227,7 @@ app/
 electron/
 ├── main.js                 Spawns the Next.js server as a child process; owns everything only
 │                           Electron can do -- a hidden BrowserWindow that resolves Meta Ad
-│                           Library links (see §18), the Media Library's JSON store + IPC
+│                           Library links (see §19), the Media Library's JSON store + IPC
 │                           (list/upsert/rename/delete/open/scan), and the will-download hook
 │                           that passively catches Transcript-tab exports into that store
 └── preload.js               Minimal contextBridge surface (models, folder picker, Meta resolve,
@@ -222,7 +240,7 @@ port (dynamically chosen, never hardcoded) plus a small IPC surface for what onl
 do. Almost everything else — including all of Download's yt-dlp work — runs as ordinary Next.js
 API routes, the same pattern the app inherited from its transcription pipeline.
 
-## 18. Known limitations
+## 19. Known limitations
 
 - **Meta Ads requires the desktop app, not a browser tab.** Every `facebook.com/ads/...` URL sits
   behind a JS-executing bot-challenge that a plain HTTP request cannot pass. Downcript resolves
@@ -269,3 +287,11 @@ API routes, the same pattern the app inherited from its transcription pipeline.
   the app can't see the file (or know its final name) until Electron's own download-completion
   event fires, which only happens after that dialog is resolved. This is a consequence of
   deliberately leaving that export flow untouched from an earlier phase, not a bug.
+- **Batch ad downloading still processes one at a time.** Adding several ads at once queues them
+  all, but Meta Ads' worker is the same sequential one it always was (unlike Download's
+  concurrent lanes) — batching changes how many jobs you can add in one step, not how many run
+  simultaneously.
+- **"Clear completed" was observed, in one live test, to no-op on the very first click right after
+  a download finished, then work correctly a couple of seconds later on a second click.** Not
+  data-destructive (nothing was lost, it just didn't clear yet), and not reproduced consistently
+  enough to isolate a root cause — noted here rather than silently dropped.
