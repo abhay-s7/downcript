@@ -12,6 +12,7 @@ import {
 } from "@/app/lib/metaJobs";
 import { TranscriptFormat } from "@/app/lib/services/meta/types";
 import { notifyTaskComplete } from "@/app/lib/services/notifications/completionNotifier";
+import { registerLibraryEntry } from "@/app/lib/services/library/libraryClient";
 
 type OutputFormat = "original" | "hinglish";
 
@@ -108,7 +109,7 @@ export function useMetaQueue() {
 
     updateCreative(groupId, creativeId, { transcriptStatus: "processing", transcriptError: undefined });
     void runMetaTranscribeJob(creative, outputFormat, formats, outputDirRef.current)
-      .then(() => {
+      .then((result) => {
         updateCreative(groupId, creativeId, { transcriptStatus: "completed" });
         // Covers both a standalone "Transcript Only" click and the tail end
         // of "Download Video + Transcript" -- either way, this is always
@@ -117,6 +118,23 @@ export function useMetaQueue() {
         // combo's own download-completion step is the one that suppresses
         // itself (see the worker loop below) to avoid firing twice.
         notifyTaskComplete(`Transcript ready for ${creative.fileName}.`);
+
+        for (const filePath of Object.values(result.paths)) {
+          if (!filePath) continue;
+          const exportFileName = filePath.split(/[/\\]/).pop() || filePath;
+          registerLibraryEntry({
+            id: filePath,
+            filePath,
+            fileName: exportFileName,
+            title: adLibraryTitle(groupId, creativeId),
+            sourceModule: "meta-ads",
+            platform: "Meta Ads",
+            sourceUrl: groupsRef.current.find((g) => g.id === groupId)?.url,
+            kind: "transcript",
+            ext: exportFileName.split(".").pop() || "",
+            status: "completed",
+          });
+        }
       })
       .catch((err) =>
         updateCreative(groupId, creativeId, {
@@ -124,6 +142,14 @@ export function useMetaQueue() {
           transcriptError: err instanceof Error ? err.message : "Transcription failed.",
         })
       );
+  }
+
+  // Matches MetaAdCard's own "{pageName || 'Meta Ad'} — #{adArchiveId}" convention,
+  // so a library entry reads the same way the ad did in its own queue card.
+  function adLibraryTitle(groupId: string, creativeId: string): string {
+    const group = groupsRef.current.find((g) => g.id === groupId);
+    const creative = group?.creatives.find((c) => c.id === creativeId);
+    return `${group?.pageName || "Meta Ad"} — #${creative?.adArchiveId ?? ""}`;
   }
 
   function findPendingCreative(): { groupId: string; creative: MetaCreativeJob } | null {
@@ -162,6 +188,19 @@ export function useMetaQueue() {
             fileName: result.fileName,
           });
 
+          registerLibraryEntry({
+            id: creative.id,
+            filePath: result.filePath,
+            fileName: result.fileName,
+            title: adLibraryTitle(groupId, creative.id),
+            sourceModule: "meta-ads",
+            platform: "Meta Ads",
+            sourceUrl: groupsRef.current.find((g) => g.id === groupId)?.url,
+            kind: creative.kind,
+            ext: result.fileName.split(".").pop() || "",
+            status: "completed",
+          });
+
           const wasBatchMember = resolveBatchOutcome(creative.id, true);
           const autoTranscribe = autoTranscribeRef.current.get(creative.id);
           if (autoTranscribe) {
@@ -186,9 +225,19 @@ export function useMetaQueue() {
           if (controller.signal.aborted) {
             updateCreative(groupId, creative.id, { status: "cancelled" });
           } else {
-            updateCreative(groupId, creative.id, {
+            const message = err instanceof Error ? err.message : "Download failed.";
+            updateCreative(groupId, creative.id, { status: "failed", error: message });
+            registerLibraryEntry({
+              id: creative.id,
+              fileName: creative.fileName,
+              title: adLibraryTitle(groupId, creative.id),
+              sourceModule: "meta-ads",
+              platform: "Meta Ads",
+              sourceUrl: groupsRef.current.find((g) => g.id === groupId)?.url,
+              kind: "other",
+              ext: "",
               status: "failed",
-              error: err instanceof Error ? err.message : "Download failed.",
+              error: message,
             });
           }
         } finally {

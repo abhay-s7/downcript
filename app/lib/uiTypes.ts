@@ -4,4 +4,4 @@
 export type Mode = "youtube" | "instagram" | "dailymotion" | "upload" | "drive";
 
 // Top-level app navigation.
-export type Section = "home" | "download" | "transcript" | "meta" | "settings";
+export type Section = "home" | "download" | "transcript" | "meta" | "library" | "settings";

@@ -7,6 +7,7 @@ const NAV_ITEMS: Array<{ section: Section; label: string }> = [
   { section: "download", label: "Download" },
   { section: "transcript", label: "Transcript" },
   { section: "meta", label: "Meta Ads" },
+  { section: "library", label: "Library" },
   { section: "settings", label: "Settings" },
 ];
 
@@ -62,8 +63,10 @@ export default function Header({
                   <strong>Download</strong> fetches media from YouTube, Instagram, and other
                   supported sites. <strong>Transcript</strong> turns any video into readable
                   text, processed locally on this machine. <strong>Meta Ads</strong> pulls the
-                  video, image, or carousel creative from a Meta Ad Library link. Each section
-                  has its own queue, so you can start several jobs and they run one at a time.
+                  video, image, or carousel creative from a Meta Ad Library link.{" "}
+                  <strong>Library</strong> collects everything you&apos;ve downloaded or generated
+                  in one searchable place. Each section has its own queue, so you can start
+                  several jobs at once (Download runs a few at a time; the rest one at a time).
                 </p>
               </div>
             </>
