@@ -389,6 +389,17 @@ export function useMetaQueue() {
     sync();
   }, [sync]);
 
+  // Only clears a group once every one of its creatives (all of them, for a
+  // carousel) is fully "completed" -- a group that's a mix of completed and
+  // failed/queued/transcribing isn't done yet and stays, same as Download's
+  // own clearCompleted only ever drops individually-completed cards.
+  const clearCompleted = useCallback(() => {
+    groupsRef.current = groupsRef.current.filter(
+      (g) => !(g.status === "ready" && g.creatives.length > 0 && g.creatives.every((c) => c.status === "completed"))
+    );
+    sync();
+  }, [sync]);
+
   return {
     groups,
     isProcessing,
@@ -400,5 +411,6 @@ export function useMetaQueue() {
     cancelCreative,
     transcriptOnly,
     removeGroup,
+    clearCompleted,
   };
 }

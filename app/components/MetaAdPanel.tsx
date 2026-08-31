@@ -1,11 +1,13 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useMetaQueue } from "@/app/hooks/useMetaQueue";
 import { useOutputDir } from "@/app/hooks/useOutputDir";
 import { OutputFormat } from "@/app/lib/jobs";
 import { TranscriptFormat } from "@/app/lib/services/meta/types";
+import { extractMetaAdId } from "@/app/lib/services/meta/urlValidation";
 import MetaAdInput from "@/app/components/MetaAdInput";
+import MetaAdBatchInput from "@/app/components/MetaAdBatchInput";
 import MetaAdCard from "@/app/components/MetaAdCard";
 import OutputFormatToggle from "@/app/components/OutputFormatToggle";
 import TranscriptFormatSelector from "@/app/components/TranscriptFormatSelector";
@@ -30,6 +32,20 @@ export default function MetaAdPanel() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [outputDir, queue.setOutputDir]);
 
+  // Ad ids already in the queue (resolved or not -- a still-loading or
+  // resolve-error group still has its original URL) -- passed to the batch
+  // input so a re-paste of something already queued is caught as a
+  // duplicate too, not just duplicates within the same paste. Computed
+  // before the isDesktop early return below since hooks can't follow one.
+  const existingAdIds = useMemo(() => {
+    const ids = new Set<string>();
+    for (const group of queue.groups) {
+      const id = extractMetaAdId(group.url);
+      if (id) ids.add(id);
+    }
+    return ids;
+  }, [queue.groups]);
+
   if (!isDesktop) {
     return (
       <div className="rounded-lg border border-gray-200 bg-white p-6 text-sm text-gray-500">
@@ -40,6 +56,10 @@ export default function MetaAdPanel() {
   }
 
   const formatsList = Array.from(transcriptFormats);
+
+  function handleAddBatchUrls(urls: string[]) {
+    for (const url of urls) queue.addUrl(url);
+  }
 
   return (
     <div className="space-y-6">
@@ -59,10 +79,21 @@ export default function MetaAdPanel() {
         <div className="mt-3 pt-3 border-t border-gray-100">
           <TranscriptFormatSelector selected={transcriptFormats} onChange={setTranscriptFormats} />
         </div>
+
+        <MetaAdBatchInput existingAdIds={existingAdIds} onAddUrls={handleAddBatchUrls} />
       </div>
 
       {queue.groups.length > 0 && (
         <div className="space-y-3">
+          <div className="flex items-center justify-end">
+            <button
+              onClick={queue.clearCompleted}
+              className="text-sm text-gray-500 hover:text-gray-800 hover:underline"
+            >
+              Clear completed
+            </button>
+          </div>
+
           {queue.groups.map((group) => (
             <MetaAdCard
               key={group.id}
