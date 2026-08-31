@@ -20,4 +20,18 @@ contextBridge.exposeInMainWorld("desktop", {
   openLogsFolder: () => ipcRenderer.invoke("dialog:openLogsFolder"),
   resolveMetaAd: (url) => ipcRenderer.invoke("meta:resolveAd", url),
   notifyTaskComplete: (message) => ipcRenderer.invoke("notification:taskComplete", message),
+  library: {
+    list: () => ipcRenderer.invoke("library:list"),
+    upsert: (entry) => ipcRenderer.invoke("library:upsert", entry),
+    remove: (id, options) => ipcRenderer.invoke("library:remove", id, options),
+    rename: (id, newBaseName) => ipcRenderer.invoke("library:rename", id, newBaseName),
+    openFile: (filePath) => ipcRenderer.invoke("library:openFile", filePath),
+    openFolder: (filePath) => ipcRenderer.invoke("library:openFolder", filePath),
+    scanFolders: (folders) => ipcRenderer.invoke("library:scanFolders", folders),
+    onChanged: (callback) => {
+      const handler = (_event, entries) => callback(entries);
+      ipcRenderer.on("library:changed", handler);
+      return () => ipcRenderer.removeListener("library:changed", handler);
+    },
+  },
 });

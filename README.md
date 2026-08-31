@@ -19,9 +19,14 @@ and extract an ad without one blocking the others.
 
 ## 2. Features
 
-- One shared, always-running queue per section (Download / Transcript / Meta Ads) — start
-  several jobs and they process one at a time, in the background, while you use another section.
-- Real cancel (the underlying process is actually killed, not just abandoned) and retry.
+- One shared, always-running queue per section (Download / Transcript / Meta Ads), running in the
+  background while you use another section. Download runs a small, configurable number of jobs
+  at once (default 2, Settings); Transcript and Meta Ads process one at a time.
+- Real pause/resume, cancel (the underlying process is actually killed, not just abandoned), and
+  retry — a paused/retried download picks back up via yt-dlp's own partial-file continuation
+  rather than restarting from zero.
+- A persistent, searchable **Media Library** (§9) collecting everything downloaded or generated,
+  independent of any one tab's own queue.
 - Collision-safe file naming — nothing gets silently overwritten.
 - Choose where files save, per section or as a shared default (Settings).
 - Friendly error messages in the UI; technical details go to a debug log (Settings → View logs).
@@ -60,7 +65,7 @@ queue. Cancel stops the actual ffmpeg/Whisper/yt-dlp process for that job, not j
 Paste a Meta Ad Library URL (`https://www.facebook.com/ads/library/?id=...`). The app:
 
 1. Resolves the ad — this specifically requires the desktop app, not a browser tab (see
-   §17, Known limitations, for why).
+   §18, Known limitations, for why).
 2. Detects whether it's a single video, a single image, or multiple creatives.
 3. Lets you download any creative, or all of them, into a `MetaAd_<id>/` folder.
 4. For any video creative, offers **Download Video**, **Download Transcript**, and **Download
@@ -90,22 +95,45 @@ the rest. Note: Meta also uses multiple `cards` for **Dynamic Creative Optimizat
 creatives, distinguished from a true carousel using Meta's own `display_format` field where
 available.
 
-## 9. Windows installation
+## 9. Media Library
+
+Everything Download, Meta Ads, and Transcript's export buttons produce is automatically collected
+into one searchable **Library** (top nav), persisted in a JSON file under the app's own data
+folder — it survives restarts, independent of any one tab's own queue.
+
+- **Auto-registration, three paths**: Download and Meta Ads register a library entry themselves
+  the moment a job completes or fails. The main Transcript module's Export DOCX/TXT/SRT buttons
+  are deliberately left as plain browser-style downloads (unchanged from an earlier phase), so
+  those are instead caught passively via Electron's own download-completion event — the export
+  still goes through the normal Save dialog, the app just also notices where it landed.
+- **Pre-existing files**: "Scan for existing files" walks the default (and any custom) output
+  folder for recognized file types not yet registered — for files that were already there before
+  this feature existed, or added by hand — without moving or reorganizing anything.
+- **Search, sort (Date/Name/Size/Type/Source), and filter** (by type, and by completed/failed
+  status).
+- **Per-item actions**: Open file, Open containing folder, Copy path, Rename (renames the real
+  file, not just the label), Delete (move the file to Trash, or remove just the library record),
+  and — for a completed video entry — **Transcribe**, which reuses the same transcription route
+  Meta Ads' video creatives already use.
+- **Thumbnails** show only when already known from elsewhere (e.g. yt-dlp's own thumbnail for a
+  Download entry) — the Library does not generate thumbnails itself (see §18).
+
+## 10. Windows installation
 
 Run the installer (`Downcript Setup.exe`), choose an install location, and launch. No other
 software needs to be installed first.
 
-## 10. macOS installation
+## 11. macOS installation
 
 Open the `.dmg`, drag Downcript to Applications. The build is currently **ad-hoc signed, not
-notarized, and Apple Silicon (arm64) only** — see §17.
+notarized, and Apple Silicon (arm64) only** — see §18.
 
-## 11. Usage instructions
+## 12. Usage instructions
 
 Launch the app → pick a starting point from Home (or use the top nav) → paste a link or choose a
 file → follow the on-screen queue. Settings lets you change where files save by default.
 
-## 12. Troubleshooting
+## 13. Troubleshooting
 
 The app shows plain-language errors ("Unable to process this URL...") and keeps the technical
 detail (exit codes, stderr, stack traces) in a log file — Settings → **View logs**. If something
@@ -117,11 +145,11 @@ fails:
   need periodic yt-dlp updates over the app's lifetime.
 - **Meta Ads fails to resolve an ad** — either the ad genuinely doesn't exist/was deleted (the app
   shows this distinctly), or Meta changed their page format, which will need an app update to fix
-  (see §17).
+  (see §18).
 - **"Meta Ads extraction needs to run inside the desktop app"** — you're viewing this in a plain
   browser tab during development; run the actual desktop app instead.
 
-## 13. Development setup
+## 14. Development setup
 
 ```bash
 npm install
@@ -134,7 +162,7 @@ Requires Node.js ≥20 for development. A local Python 3 with `faster-whisper`, 
 `yt-dlp` (see `requirements.txt`) lets `electron:dev`/`dev` fall back to system tools instead of
 the frozen binaries — only needed for development, never for a packaged install.
 
-## 14. Build commands
+## 15. Build commands
 
 | Command | What it does |
 |---|---|
@@ -144,7 +172,7 @@ the frozen binaries — only needed for development, never for a packaged instal
 | `npm run dist:mac` | Full macOS pipeline: build → build:python → download yt-dlp (darwin) → verify → package `.dmg` (arm64) |
 | `npm run dist:win` | Same, for Windows (x64 NSIS installer) — **must run on an actual Windows machine**, not cross-compiled from macOS/Linux |
 
-## 15. Packaging
+## 16. Packaging
 
 Electron-builder handles both targets (config lives in `package.json`'s `build` key). The actual
 Next.js server, the frozen Python tools, and the yt-dlp binary are injected via
@@ -156,31 +184,36 @@ CI: `.github/workflows/windows-build.yml` builds, packages, silent-installs, and
 real Windows installer on `windows-latest` (the only reliable way to verify a Windows build, since
 PyInstaller/ffmpeg-static can't cross-compile from macOS). It currently covers Upload
 transcription and Dailymotion's bundled `yt-dlp.exe` — it does not yet cover the Download or Meta
-Ads modules; see §17.
+Ads modules; see §18.
 
-## 16. Project architecture
+## 17. Project architecture
 
 ```
 app/
 ├── api/                    Next.js API routes — the "backend" (download, transcription,
 │                           Meta Ads creative download/transcribe, job cancel)
 ├── components/             React UI
-├── hooks/                  Per-section queue state (useDownloadQueue, useTranscriptionQueue,
-│                           useMetaQueue) — one sequential worker each
+├── hooks/                  Per-section queue state (useDownloadQueue -- a small concurrent lane
+│                           pool; useTranscriptionQueue, useMetaQueue -- one sequential worker
+│                           each; useLibrary -- backed by the main process, not local state)
 └── lib/
     ├── services/
     │   ├── downloader/     yt-dlp invocation, format selection, progress parsing
     │   ├── meta/           Ad snapshot parsing/classification (pure, no Electron dependency)
+    │   ├── library/        Shared LibraryEntry type + a thin fire-and-forget client wrapper
     │   └── filesystem/     Shared filename sanitizing + collision-safe dedup
     ├── jobRegistry.ts       Cancel-token registry shared by every job type
     ├── ytdlpRuntime.ts       /
     ├── pythonRuntime.ts       > resolve bundled-vs-dev-mode binaries
     └── transcribeVideoFile.ts /
 electron/
-├── main.js                 Spawns the Next.js server as a child process; owns the one thing
-│                           only Electron can do — a hidden BrowserWindow that resolves Meta
-│                           Ad Library links (see §17)
-└── preload.js               Minimal contextBridge surface (models, folder picker, Meta resolve)
+├── main.js                 Spawns the Next.js server as a child process; owns everything only
+│                           Electron can do -- a hidden BrowserWindow that resolves Meta Ad
+│                           Library links (see §18), the Media Library's JSON store + IPC
+│                           (list/upsert/rename/delete/open/scan), and the will-download hook
+│                           that passively catches Transcript-tab exports into that store
+└── preload.js               Minimal contextBridge surface (models, folder picker, Meta resolve,
+                              library)
 scripts/                     Build-time only: PyInstaller freeze, yt-dlp download, CI smoke tests
 ```
 
@@ -189,7 +222,7 @@ port (dynamically chosen, never hardcoded) plus a small IPC surface for what onl
 do. Almost everything else — including all of Download's yt-dlp work — runs as ordinary Next.js
 API routes, the same pattern the app inherited from its transcription pipeline.
 
-## 17. Known limitations
+## 18. Known limitations
 
 - **Meta Ads requires the desktop app, not a browser tab.** Every `facebook.com/ads/...` URL sits
   behind a JS-executing bot-challenge that a plain HTTP request cannot pass. Downcript resolves
@@ -225,3 +258,14 @@ API routes, the same pattern the app inherited from its transcription pipeline.
   every test ad to a single creative on the day this was built, so a genuine multi-creative batch
   couldn't be reproduced live in that session. Every other completion-sound path (single download,
   transcript-only, the combo action, sound on/off, persistence, and cancel) was verified live.
+- **The Media Library never generates thumbnails.** It only ever shows one already known from
+  elsewhere (e.g. yt-dlp's own thumbnail URL for a Download entry) — there is no ffmpeg
+  frame-extraction step, so Meta Ads entries and scanned/pre-existing files always fall back to a
+  plain type badge.
+- **Library duration is only ever what the source already reported** (yt-dlp, for Download
+  entries) — nothing is probed for files found via a folder scan or a Transcript-tab export, so
+  those entries show no duration.
+- **A Transcript-tab export only reaches the Library once its native Save dialog is confirmed** —
+  the app can't see the file (or know its final name) until Electron's own download-completion
+  event fires, which only happens after that dialog is resolved. This is a consequence of
+  deliberately leaving that export flow untouched from an earlier phase, not a bug.

@@ -7,6 +7,7 @@ import HomeScreen from "@/app/components/HomeScreen";
 import DownloadPanel from "@/app/components/DownloadPanel";
 import TranscriptPanel from "@/app/components/TranscriptPanel";
 import MetaAdPanel from "@/app/components/MetaAdPanel";
+import LibraryPanel from "@/app/components/LibraryPanel";
 import SettingsPanel from "@/app/components/SettingsPanel";
 import { Section } from "@/app/lib/uiTypes";
 
@@ -34,6 +35,9 @@ export default function Home() {
           </div>
           <div className={section === "meta" ? "" : "hidden"}>
             <MetaAdPanel />
+          </div>
+          <div className={section === "library" ? "" : "hidden"}>
+            <LibraryPanel />
           </div>
         </div>
       </main>

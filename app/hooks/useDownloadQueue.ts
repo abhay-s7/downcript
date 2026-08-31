@@ -14,6 +14,8 @@ import {
 } from "@/app/lib/downloadJobs";
 import { getMaxConcurrentDownloads } from "@/app/lib/services/settings/downloadConcurrency";
 import { notifyTaskComplete } from "@/app/lib/services/notifications/completionNotifier";
+import { registerLibraryEntry } from "@/app/lib/services/library/libraryClient";
+import { kindForExtension } from "@/app/lib/services/library/types";
 
 const ACTIVE_STATUSES: DownloadCardStatus[] = ["preparing", "downloading", "processing"];
 
@@ -105,14 +107,43 @@ export function useDownloadQueue() {
           );
           updateCard(card.id, { status: "completed", filePath: result.filePath, fileName: result.fileName });
           notifyTaskComplete(`${result.fileName} finished downloading.`);
+
+          const ext = result.fileName.split(".").pop() || "";
+          registerLibraryEntry({
+            id: card.id,
+            filePath: result.filePath,
+            fileName: result.fileName,
+            title: card.title || card.platform,
+            sourceModule: "download",
+            platform: card.platform,
+            sourceUrl: card.url,
+            kind: kindForExtension(ext),
+            ext,
+            durationSeconds: card.duration,
+            status: "completed",
+            thumbnail: card.thumbnail,
+          });
         } catch (err) {
           if (controller.signal.aborted) {
             const wasPause = pausedIntentRef.current.delete(card.id);
             updateCard(card.id, { status: wasPause ? "paused" : "cancelled" });
           } else {
-            updateCard(card.id, {
+            const message = err instanceof Error ? err.message : "Download failed.";
+            updateCard(card.id, { status: "failed", error: message });
+            // Cancelled/paused jobs are recoverable queue state, not a
+            // library-worthy outcome -- only a genuine failure (not an
+            // abort) is worth surfacing in the permanent record.
+            registerLibraryEntry({
+              id: card.id,
+              fileName: card.title || card.platform || card.url,
+              title: card.title || card.platform,
+              sourceModule: "download",
+              platform: card.platform,
+              sourceUrl: card.url,
+              kind: "other",
+              ext: "",
               status: "failed",
-              error: err instanceof Error ? err.message : "Download failed.",
+              error: message,
             });
           }
         } finally {

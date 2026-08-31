@@ -1,4 +1,4 @@
-const { app, BrowserWindow, shell, dialog, ipcMain, Notification } = require("electron");
+const { app, BrowserWindow, shell, dialog, ipcMain, Notification, session } = require("electron");
 const path = require("node:path");
 const fs = require("node:fs");
 const net = require("node:net");
@@ -335,6 +335,187 @@ ipcMain.handle("notification:taskComplete", (_event, message) => {
   }).show();
 });
 
+// --- Media Library -----------------------------------------------------
+//
+// A permanent, cross-session record of everything the app has downloaded or
+// generated, independent of any one tab's own (session-scoped) queue state.
+// Lives here rather than in renderer localStorage for two reasons: Rename/
+// Delete/Open need real fs/shell access the renderer is never given
+// directly, and one of the three ways an entry gets registered (the
+// will-download hook below) only exists in this process to begin with.
+//
+// Deliberately a single flat JSON file, not a database -- this is a
+// single-user desktop app; a few thousand entries is a trivial read/parse,
+// and mirrors the plain-JSON-file precedent already used for the app log.
+const LIBRARY_FILE = path.join(app.getPath("userData"), "library.json");
+
+// Mirrors app/lib/services/library/types.ts's EXTENSION_KIND -- duplicated
+// rather than imported because this file is plain CommonJS, not bundled
+// from the renderer's TypeScript.
+const EXTENSION_KIND = {
+  mp4: "video", mov: "video", mkv: "video", webm: "video", avi: "video",
+  mp3: "audio", m4a: "audio", wav: "audio",
+  jpg: "image", jpeg: "image", png: "image", webp: "image", gif: "image", avif: "image", bmp: "image",
+  txt: "transcript", docx: "transcript", srt: "transcript",
+};
+function kindForExtension(ext) {
+  return EXTENSION_KIND[String(ext).toLowerCase().replace(/^\./, "")] || "other";
+}
+
+let libraryEntries = [];
+try {
+  libraryEntries = JSON.parse(fs.readFileSync(LIBRARY_FILE, "utf8"));
+  if (!Array.isArray(libraryEntries)) libraryEntries = [];
+} catch {
+  // Missing or corrupt on first run / after a manual edit -- start empty
+  // rather than failing the whole app over a non-essential feature.
+  libraryEntries = [];
+}
+
+function saveLibrary() {
+  try {
+    fs.writeFileSync(LIBRARY_FILE, JSON.stringify(libraryEntries), "utf8");
+  } catch (err) {
+    console.error("Failed to persist library.json:", err);
+  }
+}
+
+function broadcastLibraryChanged() {
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.webContents.send("library:changed", libraryEntries);
+  }
+}
+
+// Used by both the IPC upsert handler (Download/Meta Ads completions) and
+// the will-download hook (Transcript-tab exports) -- the one place that
+// decides size/timestamps and persists+broadcasts, so neither caller has to
+// duplicate that bookkeeping.
+function upsertLibraryEntry(input) {
+  const existing = libraryEntries.find((e) => e.id === input.id);
+  const now = Date.now();
+
+  let sizeBytes;
+  if (input.filePath) {
+    try {
+      sizeBytes = fs.statSync(input.filePath).size;
+    } catch {
+      // File briefly not on disk yet (write in progress) or already gone --
+      // leave size undefined rather than failing the whole upsert over it.
+    }
+  }
+
+  const entry = {
+    ...input,
+    sizeBytes,
+    createdAt: existing?.createdAt ?? now,
+    updatedAt: now,
+  };
+
+  libraryEntries = existing
+    ? libraryEntries.map((e) => (e.id === input.id ? entry : e))
+    : [...libraryEntries, entry];
+
+  saveLibrary();
+  broadcastLibraryChanged();
+  return entry;
+}
+
+ipcMain.handle("library:list", () => libraryEntries);
+
+ipcMain.handle("library:upsert", (_event, input) => upsertLibraryEntry(input));
+
+ipcMain.handle("library:remove", async (_event, id, options) => {
+  const entry = libraryEntries.find((e) => e.id === id);
+  if (entry?.filePath && options?.deleteFile) {
+    try {
+      await shell.trashItem(entry.filePath);
+    } catch (err) {
+      // Already gone from disk, or permission issue -- still drop the
+      // library record either way, but surface the real reason.
+      throw new Error(`Could not delete "${entry.fileName}": ${err.message}`);
+    }
+  }
+  libraryEntries = libraryEntries.filter((e) => e.id !== id);
+  saveLibrary();
+  broadcastLibraryChanged();
+});
+
+ipcMain.handle("library:rename", (_event, id, newBaseName) => {
+  const entry = libraryEntries.find((e) => e.id === id);
+  if (!entry || !entry.filePath) throw new Error("This item has no file to rename.");
+
+  const dir = path.dirname(entry.filePath);
+  const ext = path.extname(entry.filePath);
+  const sanitized = String(newBaseName).replace(/[/\\:*?"<>|]/g, "_").trim().slice(0, 150);
+  if (!sanitized) throw new Error("Please enter a valid name.");
+
+  const newPath = path.join(dir, `${sanitized}${ext}`);
+  if (newPath !== entry.filePath && fs.existsSync(newPath)) {
+    throw new Error("A file with that name already exists.");
+  }
+
+  fs.renameSync(entry.filePath, newPath);
+  // LibraryRow displays `title || fileName` -- a non-empty title (set at
+  // creation from the video's real title, not the filename) would otherwise
+  // always win and silently hide a successful rename from the user.
+  return upsertLibraryEntry({ ...entry, filePath: newPath, fileName: path.basename(newPath), title: sanitized });
+});
+
+ipcMain.handle("library:openFile", (_event, filePath) => shell.openPath(filePath));
+ipcMain.handle("library:openFolder", (_event, filePath) => shell.showItemInFolder(filePath));
+
+// Non-recursive-by-default folder scan (depth 2, to also reach Meta Ads'
+// MetaAd_<id>/ subfolders) for files the app produced but never registered
+// -- pre-existing files from before this feature shipped, or anything a
+// user moved into the output folder by hand. Idempotent: re-running never
+// duplicates an entry, since it's keyed by the file's own absolute path.
+function scanDir(dir, depth, results) {
+  let names;
+  try {
+    names = fs.readdirSync(dir, { withFileTypes: true });
+  } catch {
+    return; // Folder doesn't exist yet / not readable -- nothing to scan.
+  }
+  for (const entry of names) {
+    const full = path.join(dir, entry.name);
+    if (entry.isDirectory()) {
+      if (depth > 0) scanDir(full, depth - 1, results);
+      continue;
+    }
+    const ext = path.extname(entry.name).slice(1);
+    if (!(ext.toLowerCase() in EXTENSION_KIND)) continue;
+    results.push(full);
+  }
+}
+
+ipcMain.handle("library:scanFolders", (_event, folders) => {
+  const found = [];
+  for (const folder of Array.isArray(folders) ? folders : []) {
+    scanDir(folder, 2, found);
+  }
+
+  const known = new Set(libraryEntries.map((e) => e.filePath).filter(Boolean));
+  let added = 0;
+  for (const filePath of found) {
+    if (known.has(filePath)) continue;
+    const ext = path.extname(filePath).slice(1);
+    const base = path.basename(filePath, path.extname(filePath));
+    upsertLibraryEntry({
+      id: filePath,
+      filePath,
+      fileName: path.basename(filePath),
+      title: base,
+      sourceModule: "scan",
+      kind: kindForExtension(ext),
+      ext,
+      status: "completed",
+    });
+    known.add(filePath);
+    added += 1;
+  }
+  return { added };
+});
+
 // Every facebook.com/ads/... URL -- including the lighter "preview" endpoints
 // -- sits behind a JS-executing bot-challenge page (confirmed: a plain HTTPS
 // request gets a 403 challenge page, never the real content). Only a real
@@ -403,6 +584,44 @@ ipcMain.handle("meta:resolveAd", async (_event, url) => {
   }
 });
 
+// The one Library registration path that has no explicit caller: the main
+// Transcript module's Export DOCX/TXT/SRT buttons trigger a plain browser-
+// style Blob download (app/lib/export.ts's triggerDownload), which Electron
+// resolves via a native Save dialog whose final path the renderer never
+// learns -- deliberately left that way (ExportMenu.tsx is intentionally
+// unchanged from an earlier phase). This passively catches the outcome
+// instead, without touching that flow at all. Registered once -- `launch()`
+// can run again on macOS's "activate" after all windows close, and
+// session.defaultSession's listeners would otherwise stack across that.
+let downloadCaptureRegistered = false;
+function registerDownloadCapture() {
+  if (downloadCaptureRegistered) return;
+  downloadCaptureRegistered = true;
+
+  session.defaultSession.on("will-download", (_event, item) => {
+    const ext = path.extname(item.getFilename()).slice(1).toLowerCase();
+    // Not a file type this app produces -- leave Electron's normal download
+    // behavior alone, just don't pollute the library with unrelated saves.
+    if (!(ext in EXTENSION_KIND)) return;
+
+    item.once("done", (_e, state) => {
+      if (state !== "completed") return;
+      const savedPath = item.getSavePath();
+      const base = path.basename(savedPath, path.extname(savedPath));
+      upsertLibraryEntry({
+        id: `export-${Date.now()}-${Math.random().toString(36).slice(2)}`,
+        filePath: savedPath,
+        fileName: path.basename(savedPath),
+        title: base,
+        sourceModule: "transcript-export",
+        kind: kindForExtension(ext),
+        ext,
+        status: "completed",
+      });
+    });
+  });
+}
+
 function createWindow() {
   mainWindow = new BrowserWindow({
     width: 1280,
@@ -430,6 +649,7 @@ function createWindow() {
 
 async function launch() {
   const win = createWindow();
+  registerDownloadCapture();
 
   if (DEV_START_URL) {
     win.loadURL(DEV_START_URL);

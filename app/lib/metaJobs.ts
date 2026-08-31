@@ -159,12 +159,16 @@ export async function runMetaCreativeJob(
 // transcribes it, and discards it -- only the selected transcript format(s)
 // end up on disk. outputDir is only used in that second case, to know where
 // the transcript export(s) should land.
+export interface RunMetaTranscribeJobResult {
+  paths: Partial<Record<TranscriptFormat, string>>;
+}
+
 export async function runMetaTranscribeJob(
   creative: MetaCreativeJob,
   outputFormat: "original" | "hinglish",
   formats: TranscriptFormat[],
   outputDir: string | undefined
-): Promise<void> {
+): Promise<RunMetaTranscribeJobResult> {
   const res = await fetch("/api/meta-transcribe", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -182,6 +186,7 @@ export async function runMetaTranscribeJob(
 
   const data = await res.json();
   if (!res.ok) throw new Error(data.error || "Transcription failed.");
+  return { paths: data.paths || {} };
 }
 
 export function cancelMetaJobOnServer(jobId: string) {
