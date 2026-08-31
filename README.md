@@ -29,7 +29,9 @@ and extract an ad without one blocking the others.
   independent of any one tab's own queue.
 - Paste (or import a TXT/CSV of) many Meta Ad Library URLs at once and queue them all in a batch
   (§9), instead of adding them one at a time.
-- Collision-safe file naming — nothing gets silently overwritten.
+- **Smart file naming** (§11) — `Creator - Title.ext`, `Title.ext`, or `Creator - Title -
+  Platform.ext`, per a Settings preference; a video and its transcript/subtitle share the same
+  base name. Collision-safe — nothing gets silently overwritten.
 - Choose where files save, per section or as a shared default (Settings).
 - Friendly error messages in the UI; technical details go to a debug log (Settings → View logs).
 - A short completion sound (toggleable in Settings, on by default, persists across restarts) when
@@ -67,7 +69,7 @@ queue. Cancel stops the actual ffmpeg/Whisper/yt-dlp process for that job, not j
 Paste a Meta Ad Library URL (`https://www.facebook.com/ads/library/?id=...`). The app:
 
 1. Resolves the ad — this specifically requires the desktop app, not a browser tab (see
-   §19, Known limitations, for why).
+   §20, Known limitations, for why).
 2. Detects whether it's a single video, a single image, or multiple creatives.
 3. Lets you download any creative, or all of them, into a `MetaAd_<id>/` folder.
 4. For any video creative, offers **Download Video**, **Download Transcript**, and **Download
@@ -78,15 +80,16 @@ Paste a Meta Ad Library URL (`https://www.facebook.com/ads/library/?id=...`). Th
    selective.
 
 ### 6. Video ads
-Downloaded as `MetaAd_<id>_Video.mp4` (or `_Creative_NN.mp4` if there's more than one creative).
-Transcript files, if generated, sit right next to it — only for the format(s) you selected, e.g.
-`..._Transcript.docx` alone if that's all you checked.
+Downloaded into a `MetaAd_<id>/` folder, named per the smart-naming rules in §11 (e.g. `Advertiser
+- Ad <id> - Meta Ads.mp4`, or `- Creative 01.mp4` etc. if there's more than one creative).
+Transcript files, if generated, share that exact same base name — only for the format(s) you
+selected, e.g. just a matching `.docx` if that's all you checked.
 
 ### 7. Static image ads
 Downloaded at the best quality Meta's page exposes (the original creative, not a resized
-preview), as `MetaAd_<id>_Image.<ext>` (or `_Creative_NN.<ext>`) — the extension matches the
-actual image format (JPG/PNG/WebP/etc.), detected from the response if Meta's URL doesn't spell
-it out. A thumbnail preview shows in the queue before you download. Images are never sent through
+preview), named the same way as video ads above but with the extension matching the actual image
+format (JPG/PNG/WebP/etc.), detected from the response if Meta's URL doesn't spell it out. A
+thumbnail preview shows in the queue before you download. Images are never sent through
 transcription, and video-only actions (Download Video / Transcript Only / Download Video +
 Transcript) never appear for an image creative.
 
@@ -134,24 +137,56 @@ folder — it survives restarts, independent of any one tab's own queue.
   and — for a completed video entry — **Transcribe**, which reuses the same transcription route
   Meta Ads' video creatives already use.
 - **Thumbnails** show only when already known from elsewhere (e.g. yt-dlp's own thumbnail for a
-  Download entry) — the Library does not generate thumbnails itself (see §19).
+  Download entry) — the Library does not generate thumbnails itself (see §20).
 
-## 11. Windows installation
+## 11. Smart file naming
+
+New files are named from real metadata instead of a raw title — Download and Meta Ads both build
+names as `Creator - Title.ext`, `Title.ext`, or `Creator - Title - Platform.ext`, per a naming
+preference in Settings (**File naming**: Title only / Creator + Title (default) / Creator +
+Title + Platform). "Creator" is the uploader/channel yt-dlp reports for Download, or the
+advertiser's page name for Meta Ads; "Title" falls back to `Ad <id>` for a Meta ad that has no
+title of its own. When no creator is available for a given download, the name falls back to
+title only regardless of the setting — there's nothing to combine. A video and its
+transcript/subtitle share the exact same base name (no `_Transcript` suffix), so a same-named
+`.srt` is auto-picked-up by most video players next to its `.mp4`.
+
+Only affects **new** files — nothing already on disk gets renamed, and older Meta Ads output
+using the previous `MetaAd_<id>_Video.mp4` pattern still works exactly as before; only the
+*folder* name (`MetaAd_<id>/`) is unchanged going forward too, for carousel grouping and
+traceability.
+
+Sanitization (shared by every module, `app/lib/services/filesystem/naming.ts`) handles: invalid
+filesystem characters, Windows' reserved device names (`CON`, `PRN`, `AUX`, `NUL`, `COM1`-`9`,
+`LPT1`-`9` get a trailing underscore), a trailing dot or space (Windows-invalid), a leading dot
+(would silently create a hidden file on macOS/Linux), Unicode/emoji (truncated by whole grapheme
+cluster via `Intl.Segmenter`, so a long emoji-heavy title never ends in a mangled half-character),
+and a generous-but-bounded length cap. Duplicate filenames still get a collision-safe `" (1)"`,
+`" (2)"`, ... suffix, unchanged from before this phase.
+
+**Not covered**: the Transcript tab's own sources (YouTube captions, Instagram, Dailymotion)
+don't fetch a video's title/uploader today — only transcript text — so their exports still use
+whatever synthetic label they already had (e.g. "YouTube - `<video id>`"), sanitized by the same
+shared function but without a real creator/title to build a smart name from. Adding that would
+mean a new metadata fetch (yt-dlp or an oEmbed call) on paths deliberately kept fast and
+yt-dlp-free; deliberately not done in this phase.
+
+## 12. Windows installation
 
 Run the installer (`Downcript Setup.exe`), choose an install location, and launch. No other
 software needs to be installed first.
 
-## 12. macOS installation
+## 13. macOS installation
 
 Open the `.dmg`, drag Downcript to Applications. The build is currently **ad-hoc signed, not
-notarized, and Apple Silicon (arm64) only** — see §19.
+notarized, and Apple Silicon (arm64) only** — see §20.
 
-## 13. Usage instructions
+## 14. Usage instructions
 
 Launch the app → pick a starting point from Home (or use the top nav) → paste a link or choose a
 file → follow the on-screen queue. Settings lets you change where files save by default.
 
-## 14. Troubleshooting
+## 15. Troubleshooting
 
 The app shows plain-language errors ("Unable to process this URL...") and keeps the technical
 detail (exit codes, stderr, stack traces) in a log file — Settings → **View logs**. If something
@@ -163,11 +198,11 @@ fails:
   need periodic yt-dlp updates over the app's lifetime.
 - **Meta Ads fails to resolve an ad** — either the ad genuinely doesn't exist/was deleted (the app
   shows this distinctly), or Meta changed their page format, which will need an app update to fix
-  (see §19).
+  (see §20).
 - **"Meta Ads extraction needs to run inside the desktop app"** — you're viewing this in a plain
   browser tab during development; run the actual desktop app instead.
 
-## 15. Development setup
+## 16. Development setup
 
 ```bash
 npm install
@@ -180,7 +215,7 @@ Requires Node.js ≥20 for development. A local Python 3 with `faster-whisper`, 
 `yt-dlp` (see `requirements.txt`) lets `electron:dev`/`dev` fall back to system tools instead of
 the frozen binaries — only needed for development, never for a packaged install.
 
-## 16. Build commands
+## 17. Build commands
 
 | Command | What it does |
 |---|---|
@@ -190,7 +225,7 @@ the frozen binaries — only needed for development, never for a packaged instal
 | `npm run dist:mac` | Full macOS pipeline: build → build:python → download yt-dlp (darwin) → verify → package `.dmg` (arm64) |
 | `npm run dist:win` | Same, for Windows (x64 NSIS installer) — **must run on an actual Windows machine**, not cross-compiled from macOS/Linux |
 
-## 17. Packaging
+## 18. Packaging
 
 Electron-builder handles both targets (config lives in `package.json`'s `build` key). The actual
 Next.js server, the frozen Python tools, and the yt-dlp binary are injected via
@@ -202,9 +237,9 @@ CI: `.github/workflows/windows-build.yml` builds, packages, silent-installs, and
 real Windows installer on `windows-latest` (the only reliable way to verify a Windows build, since
 PyInstaller/ffmpeg-static can't cross-compile from macOS). It currently covers Upload
 transcription and Dailymotion's bundled `yt-dlp.exe` — it does not yet cover the Download or Meta
-Ads modules; see §19.
+Ads modules; see §20.
 
-## 18. Project architecture
+## 19. Project architecture
 
 ```
 app/
@@ -219,7 +254,11 @@ app/
     │   ├── downloader/     yt-dlp invocation, format selection, progress parsing
     │   ├── meta/           Ad snapshot parsing/classification (pure, no Electron dependency)
     │   ├── library/        Shared LibraryEntry type + a thin fire-and-forget client wrapper
-    │   └── filesystem/     Shared filename sanitizing + collision-safe dedup
+    │   ├── filesystem/     THE naming service (sanitizing, Creator/Title/Platform assembly,
+    │   │                   collision-safe dedup) -- every module (Download, Meta Ads) builds
+    │   │                   filenames through this, not its own ad-hoc string joining
+    │   └── settings/       localStorage-backed preferences (concurrency, naming template,
+    │                       completion sound)
     ├── jobRegistry.ts       Cancel-token registry shared by every job type
     ├── ytdlpRuntime.ts       /
     ├── pythonRuntime.ts       > resolve bundled-vs-dev-mode binaries
@@ -227,7 +266,7 @@ app/
 electron/
 ├── main.js                 Spawns the Next.js server as a child process; owns everything only
 │                           Electron can do -- a hidden BrowserWindow that resolves Meta Ad
-│                           Library links (see §19), the Media Library's JSON store + IPC
+│                           Library links (see §20), the Media Library's JSON store + IPC
 │                           (list/upsert/rename/delete/open/scan), and the will-download hook
 │                           that passively catches Transcript-tab exports into that store
 └── preload.js               Minimal contextBridge surface (models, folder picker, Meta resolve,
@@ -240,7 +279,7 @@ port (dynamically chosen, never hardcoded) plus a small IPC surface for what onl
 do. Almost everything else — including all of Download's yt-dlp work — runs as ordinary Next.js
 API routes, the same pattern the app inherited from its transcription pipeline.
 
-## 19. Known limitations
+## 20. Known limitations
 
 - **Meta Ads requires the desktop app, not a browser tab.** Every `facebook.com/ads/...` URL sits
   behind a JS-executing bot-challenge that a plain HTTP request cannot pass. Downcript resolves
@@ -295,3 +334,10 @@ API routes, the same pattern the app inherited from its transcription pipeline.
   a download finished, then work correctly a couple of seconds later on a second click.** Not
   data-destructive (nothing was lost, it just didn't clear yet), and not reproduced consistently
   enough to isolate a root cause — noted here rather than silently dropped.
+- **Smart file naming doesn't reach the Transcript tab's own exports** (Upload/YouTube/Instagram/
+  Dailymotion/Drive) — those sources never fetch a title/uploader today, only transcript text, so
+  their exports keep using whatever synthetic label they already had. See §11.
+- **Windows-safety of the naming sanitizer (reserved names, trailing dots, grapheme-safe emoji
+  truncation) was verified by direct unit-level testing of the function, not by an actual Windows
+  filesystem run** — no Windows machine was available in this session, consistent with every
+  earlier phase's disclosed Windows-testing gap.

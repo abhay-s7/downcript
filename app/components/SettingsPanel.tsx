@@ -8,11 +8,18 @@ import {
   getMaxConcurrentDownloads,
   setMaxConcurrentDownloads,
 } from "@/app/lib/services/settings/downloadConcurrency";
+import {
+  NAMING_TEMPLATE_OPTIONS,
+  getNamingTemplate,
+  setNamingTemplate,
+} from "@/app/lib/services/settings/namingPreference";
+import { NamingTemplate } from "@/app/lib/services/filesystem/naming";
 
 export default function SettingsPanel() {
   const { outputDir, isDesktop, chooseFolder } = useOutputDir();
   const [soundEnabled, setSoundEnabled] = useState(() => isCompletionSoundEnabled());
   const [maxConcurrent, setMaxConcurrent] = useState(() => getMaxConcurrentDownloads());
+  const [namingTemplate, setNamingTemplateState] = useState<NamingTemplate>(() => getNamingTemplate());
 
   function handleToggleSound(checked: boolean) {
     setSoundEnabled(checked);
@@ -22,6 +29,11 @@ export default function SettingsPanel() {
   function handleConcurrencyChange(value: number) {
     setMaxConcurrent(value);
     setMaxConcurrentDownloads(value);
+  }
+
+  function handleNamingTemplateChange(value: NamingTemplate) {
+    setNamingTemplateState(value);
+    setNamingTemplate(value);
   }
 
   return (
@@ -62,6 +74,31 @@ export default function SettingsPanel() {
               </option>
             ))}
           </select>
+        </div>
+      </section>
+
+      <section className="rounded-lg border border-gray-200 bg-white p-6">
+        <h2 className="text-sm font-semibold text-gray-900 mb-1">File naming</h2>
+        <p className="text-sm text-gray-500 mb-3">
+          How new files are named — applies to Download and Meta Ads (a video and its transcript
+          share the same name, so a subtitle file matches its video). Only affects new files;
+          nothing already on disk gets renamed. When a creator/account name isn&apos;t available
+          for a given download, it falls back to title only regardless of this setting.
+        </p>
+        <div className="space-y-1.5">
+          {NAMING_TEMPLATE_OPTIONS.map((opt) => (
+            <label key={opt.value} className="flex items-center gap-2 text-sm text-gray-700 cursor-pointer">
+              <input
+                type="radio"
+                name="namingTemplate"
+                checked={namingTemplate === opt.value}
+                onChange={() => handleNamingTemplateChange(opt.value)}
+                className="accent-blue-600"
+              />
+              {opt.label}
+              <span className="text-gray-400">— {opt.example}</span>
+            </label>
+          ))}
         </div>
       </section>
 
