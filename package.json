@@ -1,6 +1,6 @@
 {
   "name": "downcript",
-  "version": "0.1.0",
+  "version": "1.0.0",
   "description": "Download, transcribe, and extract Meta ad creatives in one desktop app.",
   "author": "Abhay Satpute",
   "private": true,
@@ -33,6 +33,11 @@
       "package.json"
     ],
     "afterPack": "scripts/after-pack.js",
+    "publish": {
+      "provider": "github",
+      "owner": "abhay-s7",
+      "repo": "downcript"
+    },
     "mac": {
       "icon": "build/icon.icns",
       "category": "public.app-category.productivity",
@@ -63,6 +68,7 @@
   "dependencies": {
     "cheerio": "^1.2.0",
     "docx": "^9.7.1",
+    "electron-updater": "^6.8.9",
     "ffmpeg-static": "^5.3.0",
     "next": "16.3.0",
     "react": "19.2.8",

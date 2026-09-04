@@ -34,4 +34,18 @@ contextBridge.exposeInMainWorld("desktop", {
       return () => ipcRenderer.removeListener("library:changed", handler);
     },
   },
+  // Deliberately just these three verbs, not the autoUpdater instance or
+  // any other Electron internal -- the renderer only ever gets to ask for
+  // a check/download/install and listen for state, same minimal-surface
+  // pattern as every other bridge method here.
+  updater: {
+    checkNow: () => ipcRenderer.invoke("updater:checkNow"),
+    downloadUpdate: () => ipcRenderer.invoke("updater:downloadUpdate"),
+    quitAndInstall: () => ipcRenderer.invoke("updater:quitAndInstall"),
+    onState: (callback) => {
+      const handler = (_event, state) => callback(state);
+      ipcRenderer.on("updater:state", handler);
+      return () => ipcRenderer.removeListener("updater:state", handler);
+    },
+  },
 });

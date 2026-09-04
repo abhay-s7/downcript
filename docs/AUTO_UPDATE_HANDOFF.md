@@ -1,5 +1,15 @@
 # Auto-Update — Implementation Handoff
 
+> **Status: implemented for Windows, as of 2026-09-04.** Everything this document originally
+> described as "missing" for Windows now exists — see `RELEASE.md` for the actual release
+> process, `electron/autoUpdater.js` for the implementation, and README §19 for the user-facing
+> summary. **The macOS-specific gap this document identified is still open**: mac builds remain
+> ad-hoc signed, not notarized, and (as of this implementation) still only produce a `dmg` target,
+> not the `zip` target Squirrel.Mac's update mechanism actually needs — a real Developer ID +
+> notarization + adding a mac `zip` target are all still required before mac auto-update could
+> work, exactly as described below. Kept as historical context for *why* the Windows
+> implementation was built the way it was; not re-written after the fact.
+
 Written from a read-only audit of the codebase (2026-08-27). Nothing described as "missing" below
 has been implemented — this document exists so whoever picks up auto-update next doesn't have to
 re-derive the current state from scratch.

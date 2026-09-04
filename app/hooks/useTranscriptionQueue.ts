@@ -1,8 +1,9 @@
 "use client";
 
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { TranscriptionJob, cancelJobOnServer, runJob } from "@/app/lib/jobs";
 import { notifyTaskComplete } from "@/app/lib/services/notifications/completionNotifier";
+import { setSourceActive } from "@/app/lib/services/activity/activeJobTracker";
 
 // A single shared queue + worker for every transcription source (upload,
 // YouTube, Instagram, Google Drive). Only one job is ever "processing" at a
@@ -14,6 +15,11 @@ export function useTranscriptionQueue() {
   const jobsRef = useRef<TranscriptionJob[]>([]);
   const [jobs, setJobs] = useState<TranscriptionJob[]>([]);
   const [isProcessing, setIsProcessing] = useState(false);
+
+  useEffect(() => {
+    setSourceActive("transcript", isProcessing);
+    return () => setSourceActive("transcript", false);
+  }, [isProcessing]);
 
   const cancelRequestedRef = useRef(false);
   const workerRunningRef = useRef(false);

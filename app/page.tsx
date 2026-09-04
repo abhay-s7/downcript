@@ -3,6 +3,7 @@
 import { useState } from "react";
 import Header from "@/app/components/Header";
 import ModelSetupBanner from "@/app/components/ModelSetupBanner";
+import UpdateBanner from "@/app/components/UpdateBanner";
 import HomeScreen from "@/app/components/HomeScreen";
 import DownloadPanel from "@/app/components/DownloadPanel";
 import TranscriptPanel from "@/app/components/TranscriptPanel";
@@ -20,6 +21,7 @@ export default function Home() {
       <main className="flex-1">
         <div className="max-w-5xl mx-auto px-6 py-10">
           <ModelSetupBanner />
+          <UpdateBanner />
 
           {section === "home" && <HomeScreen onNavigate={setSection} />}
           {section === "settings" && <SettingsPanel />}
