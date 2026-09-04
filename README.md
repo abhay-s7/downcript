@@ -32,6 +32,9 @@ and extract an ad without one blocking the others.
 - **Smart file naming** (§11) — `Creator - Title.ext`, `Title.ext`, or `Creator - Title -
   Platform.ext`, per a Settings preference; a video and its transcript/subtitle share the same
   base name. Collision-safe — nothing gets silently overwritten.
+- **Automatic updates on Windows** (§19) via GitHub Releases — a banner offers to download and
+  install a newer version, never without an explicit click, and never mid-way through active
+  downloads/transcriptions without asking first.
 - Choose where files save, per section or as a shared default (Settings).
 - Friendly error messages in the UI; technical details go to a debug log (Settings → View logs).
 - A short completion sound (toggleable in Settings, on by default, persists across restarts) when
@@ -69,7 +72,7 @@ queue. Cancel stops the actual ffmpeg/Whisper/yt-dlp process for that job, not j
 Paste a Meta Ad Library URL (`https://www.facebook.com/ads/library/?id=...`). The app:
 
 1. Resolves the ad — this specifically requires the desktop app, not a browser tab (see
-   §20, Known limitations, for why).
+   §21, Known limitations, for why).
 2. Detects whether it's a single video, a single image, or multiple creatives.
 3. Lets you download any creative, or all of them, into a `MetaAd_<id>/` folder.
 4. For any video creative, offers **Download Video**, **Download Transcript**, and **Download
@@ -137,7 +140,7 @@ folder — it survives restarts, independent of any one tab's own queue.
   and — for a completed video entry — **Transcribe**, which reuses the same transcription route
   Meta Ads' video creatives already use.
 - **Thumbnails** show only when already known from elsewhere (e.g. yt-dlp's own thumbnail for a
-  Download entry) — the Library does not generate thumbnails itself (see §20).
+  Download entry) — the Library does not generate thumbnails itself (see §21).
 
 ## 11. Smart file naming
 
@@ -179,7 +182,7 @@ software needs to be installed first.
 ## 13. macOS installation
 
 Open the `.dmg`, drag Downcript to Applications. The build is currently **ad-hoc signed, not
-notarized, and Apple Silicon (arm64) only** — see §20.
+notarized, and Apple Silicon (arm64) only** — see §21.
 
 ## 14. Usage instructions
 
@@ -198,7 +201,7 @@ fails:
   need periodic yt-dlp updates over the app's lifetime.
 - **Meta Ads fails to resolve an ad** — either the ad genuinely doesn't exist/was deleted (the app
   shows this distinctly), or Meta changed their page format, which will need an app update to fix
-  (see §20).
+  (see §21).
 - **"Meta Ads extraction needs to run inside the desktop app"** — you're viewing this in a plain
   browser tab during development; run the actual desktop app instead.
 
@@ -237,9 +240,43 @@ CI: `.github/workflows/windows-build.yml` builds, packages, silent-installs, and
 real Windows installer on `windows-latest` (the only reliable way to verify a Windows build, since
 PyInstaller/ffmpeg-static can't cross-compile from macOS). It currently covers Upload
 transcription and Dailymotion's bundled `yt-dlp.exe` — it does not yet cover the Download or Meta
-Ads modules; see §20.
+Ads modules; see §21.
 
-## 19. Project architecture
+## 19. Automatic updates (Windows)
+
+Installed copies check GitHub Releases for a newer version ~10 seconds after launch, and every 4
+hours while the app stays open. A banner appears when one is found — **Update Now** downloads it
+in the background (the app stays fully usable, downloads/transcriptions keep running); once
+downloaded, **Restart & Install** quits the app, NSIS reinstalls silently in place, and it
+relaunches on the new version. Nothing installs or restarts without that explicit click — a
+normal `git push` is never mistaken for a release (only a `v*` git tag triggers one), and a
+plain app quit never silently applies a pending update. If anything is still actively downloading
+or transcribing when the update finishes downloading, the banner says so and asks for confirmation
+before restarting anyway rather than just doing it.
+
+Built on `electron-updater` + electron-builder's GitHub provider — see
+[`RELEASE.md`](RELEASE.md) for the actual release process (bump version → tag → CI builds and
+publishes automatically) and `electron/autoUpdater.js` for the main-process implementation. Fully
+disabled in development (`npm run electron:dev`/`electron:preview`) — `autoUpdater` only runs in a
+packaged, `app.isPackaged` build, so a dev session never points at production releases.
+
+Every release's installer, `.blockmap` (differential-update data), and `latest.yml` (the metadata
+electron-updater polls for) are generated and published by `.github/workflows/release.yml`. Update
+downloads are full for now in practice — the very first tagged release has nothing to diff
+against, and differential updates only shrink later ones once there's a prior release's blockmap
+to compare to; the mechanism is there but hasn't been exercised release-over-release yet.
+
+Not covered: macOS. The `publish` config in `package.json` applies to both platforms
+structurally, but macOS builds are ad-hoc signed (not a real Developer ID) and not notarized —
+Squirrel.Mac refuses to apply an update payload that isn't properly signed and notarized,
+regardless of this feature. There's a second, independent gap too: verified while building this
+feature that electron-builder only writes the update-metadata files (`app-update.yml`,
+`latest-mac.yml`) for a mac target that includes `dmg` or `zip` — this project's mac target is
+`dmg` only, but Squirrel.Mac's actual update mechanism downloads a `zip` of the `.app`, not the
+`dmg` — so even signing/notarizing today's config wouldn't be enough; a `zip` target would need
+adding too. See §21 and `docs/AUTO_UPDATE_HANDOFF.md`.
+
+## 20. Project architecture
 
 ```
 app/
@@ -248,12 +285,15 @@ app/
 ├── components/             React UI
 ├── hooks/                  Per-section queue state (useDownloadQueue -- a small concurrent lane
 │                           pool; useTranscriptionQueue, useMetaQueue -- one sequential worker
-│                           each; useLibrary -- backed by the main process, not local state)
+│                           each; useLibrary -- backed by the main process, not local state;
+│                           useAppUpdater -- subscribes to the main process's update broadcasts)
 └── lib/
     ├── services/
     │   ├── downloader/     yt-dlp invocation, format selection, progress parsing
     │   ├── meta/           Ad snapshot parsing/classification (pure, no Electron dependency)
     │   ├── library/        Shared LibraryEntry type + a thin fire-and-forget client wrapper
+    │   ├── activity/       Tiny pub/sub the three queue hooks report busy-state into, so the
+    │   │                   update banner can tell if it's safe to restart-and-install
     │   ├── filesystem/     THE naming service (sanitizing, Creator/Title/Platform assembly,
     │   │                   collision-safe dedup) -- every module (Download, Meta Ads) builds
     │   │                   filenames through this, not its own ad-hoc string joining
@@ -266,11 +306,13 @@ app/
 electron/
 ├── main.js                 Spawns the Next.js server as a child process; owns everything only
 │                           Electron can do -- a hidden BrowserWindow that resolves Meta Ad
-│                           Library links (see §20), the Media Library's JSON store + IPC
+│                           Library links (see §21), the Media Library's JSON store + IPC
 │                           (list/upsert/rename/delete/open/scan), and the will-download hook
 │                           that passively catches Transcript-tab exports into that store
+├── autoUpdater.js           electron-updater setup: schedules checks, wires its events to a
+│                           renderer broadcast, and the IPC handlers behind Update Now/Restart
 └── preload.js               Minimal contextBridge surface (models, folder picker, Meta resolve,
-                              library)
+                              library, updater)
 scripts/                     Build-time only: PyInstaller freeze, yt-dlp download, CI smoke tests
 ```
 
@@ -279,7 +321,7 @@ port (dynamically chosen, never hardcoded) plus a small IPC surface for what onl
 do. Almost everything else — including all of Download's yt-dlp work — runs as ordinary Next.js
 API routes, the same pattern the app inherited from its transcription pipeline.
 
-## 20. Known limitations
+## 21. Known limitations
 
 - **Meta Ads requires the desktop app, not a browser tab.** Every `facebook.com/ads/...` URL sits
   behind a JS-executing bot-challenge that a plain HTTP request cannot pass. Downcript resolves
@@ -299,13 +341,20 @@ API routes, the same pattern the app inherited from its transcription pipeline.
   correctly and shown as unavailable, not confused with this collation behavior.
 - **macOS build is ad-hoc signed, not notarized, and arm64-only** (no Intel Mac support, no
   universal binary). Gatekeeper may warn on a machine stricter than the one this was built on.
-- **No auto-update.** Reinstalling is currently the only way to update — there is no
-  `electron-updater` dependency, no update-check code in `electron/main.js`, no `publish`
-  configuration, and no GitHub Releases are created (CI uploads the Windows `.exe` as a plain
-  build artifact via `--publish never`; macOS has no release CI at all). The macOS build is also
-  ad-hoc signed rather than notarized, which would block an update from applying even if the rest
-  were wired up. See [`docs/AUTO_UPDATE_HANDOFF.md`](docs/AUTO_UPDATE_HANDOFF.md) for the full
-  audit and a concrete implementation plan.
+- **Auto-update is Windows-only.** Reinstalling the `.dmg` is still the only way to update on
+  macOS — its build is ad-hoc signed rather than notarized, which would block Squirrel.Mac from
+  applying an update payload even if it were otherwise wired up. See §19 and
+  [`docs/AUTO_UPDATE_HANDOFF.md`](docs/AUTO_UPDATE_HANDOFF.md) (now annotated as implemented for
+  Windows; the mac-specific gap it originally documented is still open).
+- **The Windows installer is unsigned** (no Authenticode certificate exists for this project).
+  Auto-update itself still works unsigned — electron-updater doesn't require code signing to
+  detect/download/install an update — but Windows SmartScreen shows an "unknown publisher"
+  warning on every fresh install, update or not. Purely a trust-prompt annoyance, not a
+  functional blocker.
+- **No release has been published yet as of this writing** — `v1.0.0` is the version this phase
+  shipped with, but the actual first tag/release still needs to be created manually (see
+  `RELEASE.md`'s "First release" section) before any update path can be tested against a real
+  GitHub Release.
 - **CI does not yet cover the Download or Meta Ads modules** — only Upload transcription and
   Dailymotion's bundled yt-dlp are smoke-tested on a real Windows machine today.
 - **Upload accepts MP4 only** (a deliberate, pre-existing scope limit, not new to this app).

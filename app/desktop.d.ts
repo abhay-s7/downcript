@@ -12,6 +12,20 @@ export interface ModelProgressEvent {
   error?: string;
 }
 
+// Mirrors electron/autoUpdater.js's broadcast shape exactly -- one flat
+// discriminated-by-status object rather than separate events, so the
+// renderer only ever has one piece of state to reconcile.
+export interface UpdaterState {
+  status: "checking" | "not-available" | "available" | "downloading" | "downloaded" | "error";
+  version?: string;
+  releaseNotes?: string;
+  percent?: number;
+  bytesPerSecond?: number;
+  transferred?: number;
+  total?: number;
+  error?: string;
+}
+
 export interface DesktopBridge {
   isElectron: true;
   platform: string;
@@ -37,6 +51,12 @@ export interface DesktopBridge {
     openFolder: (filePath: string) => Promise<void>;
     scanFolders: (folders: string[]) => Promise<{ added: number }>;
     onChanged: (callback: (entries: LibraryEntry[]) => void) => () => void;
+  };
+  updater: {
+    checkNow: () => Promise<void>;
+    downloadUpdate: () => Promise<void>;
+    quitAndInstall: () => Promise<void>;
+    onState: (callback: (state: UpdaterState) => void) => () => void;
   };
 }
 

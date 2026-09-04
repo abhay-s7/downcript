@@ -1,0 +1,166 @@
+name: Release Windows Build
+
+# Cuts an actual GitHub Release with electron-updater-compatible artifacts,
+# triggered by pushing a version tag (see RELEASE.md) -- deliberately a
+# separate workflow from windows-build.yml (which already runs the full
+# build + install + real-transcription/yt-dlp smoke test on every push to
+# main) rather than folding release logic into it, so a normal `git push`
+# never publishes anything and a release only ever happens from a tag an
+# already-smoke-tested commit on main was given.
+#
+# Runs on a real Windows runner for the same reason windows-build.yml does:
+# PyInstaller and ffmpeg-static both produce platform-native binaries that
+# cannot be validly cross-compiled from macOS/Linux.
+on:
+  push:
+    tags:
+      - "v*"
+
+# Required for the built-in GITHUB_TOKEN to create a Release and upload
+# assets to this repo -- no separate PAT/secret needs to be created for
+# this. electron-builder's GitHub publish reads GH_TOKEN from the
+# environment.
+permissions:
+  contents: write
+
+jobs:
+  release-windows:
+    runs-on: windows-latest
+    env:
+      npm_config_script_shell: C:\Program Files\Git\bin\bash.exe
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Extract version from the pushed tag
+        id: tag
+        shell: bash
+        run: |
+          set -euo pipefail
+          # Tag is "vX.Y.Z" -- electron-builder's GitHub publish defaults to
+          # this exact "v"-prefixed convention when matching package.json's
+          # version to a release, so tags must be pushed in this form.
+          tag="${GITHUB_REF#refs/tags/}"
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+          echo "version=${tag#v}" >> "$GITHUB_OUTPUT"
+
+      - name: Verify the tag matches package.json's version
+        shell: bash
+        run: |
+          set -euo pipefail
+          pkg_version="$(node -p "require('./package.json').version")"
+          if [ "$pkg_version" != "${{ steps.tag.outputs.version }}" ]; then
+            echo "Tag ${{ steps.tag.outputs.tag }} does not match package.json version $pkg_version." >&2
+            echo "Bump \"version\" in package.json to match before tagging (see RELEASE.md)." >&2
+            exit 1
+          fi
+
+      - name: Refuse to re-publish an existing release for this tag
+        shell: bash
+        run: |
+          set -euo pipefail
+          if gh release view "${{ steps.tag.outputs.tag }}" >/dev/null 2>&1; then
+            echo "A GitHub Release for ${{ steps.tag.outputs.tag }} already exists -- refusing to overwrite it." >&2
+            echo "Delete it first if this was a mistake, or bump the version and push a new tag instead." >&2
+            exit 1
+          fi
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.14"
+          architecture: x64
+
+      - name: Install Node dependencies (fetches the Windows ffmpeg-static binary)
+        run: npm ci
+        shell: bash
+
+      - name: Install Python build dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install --user -r requirements.txt
+        shell: bash
+
+      - name: Build Next.js standalone server
+        run: npm run build
+        shell: bash
+
+      - name: Freeze Python tools for Windows (PyInstaller)
+        run: npm run build:python
+        shell: bash
+
+      - name: Download yt-dlp Windows binary
+        run: ./scripts/download-yt-dlp.sh win32
+        shell: bash
+
+      - name: Verify the Windows runtime was actually generated
+        run: ./scripts/verify-runtime.sh win32
+        shell: bash
+
+      - name: Sanity-check bundled binaries are real Windows PE executables
+        shell: bash
+        run: |
+          set -euo pipefail
+          for exe in \
+            build-python/dist/win32/transcribe/transcribe.exe \
+            build-python/dist/win32/hinglish/hinglish.exe \
+            build-python/dist/win32/ensure_models/ensure_models.exe \
+            vendor/yt-dlp/win32/yt-dlp.exe \
+            node_modules/ffmpeg-static/ffmpeg.exe
+          do
+            magic="$(head -c2 "$exe" | od -An -tx1 | tr -d ' \n')"
+            if [ "$magic" != "4d5a" ]; then
+              echo "$exe does not start with the MZ magic bytes of a Windows PE executable (got $magic)" >&2
+              exit 1
+            fi
+            echo "OK (PE): $exe"
+          done
+
+      # Publishes straight to a GitHub Release for this tag -- electron-
+      # builder creates the release if it doesn't exist (already checked
+      # above that it doesn't), uploads the NSIS installer, the .blockmap
+      # differential-update file, and generates+uploads latest.yml (the
+      # metadata file electron-updater actually polls for). No separate
+      # "create release" step needed; --publish always does all of it.
+      - name: Build and publish the Windows installer to GitHub Releases
+        run: npx electron-builder --win --x64 --publish always
+        shell: bash
+
+      - name: Verify update metadata was produced
+        shell: bash
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          exes=(dist-electron/*.exe)
+          blockmaps=(dist-electron/*.blockmap)
+          if [ ! -f dist-electron/latest.yml ]; then
+            echo "latest.yml was not generated -- electron-updater has nothing to poll for this release." >&2
+            exit 1
+          fi
+          if [ ${#exes[@]} -eq 0 ]; then
+            echo "No installer .exe found in dist-electron/" >&2
+            exit 1
+          fi
+          if [ ${#blockmaps[@]} -eq 0 ]; then
+            echo "No .blockmap found -- differential updates won't work for this release (still a valid full update)." >&2
+          fi
+          echo "Release artifacts:"
+          ls -la dist-electron/*.exe dist-electron/*.blockmap dist-electron/latest.yml 2>/dev/null || true
+
+      - name: Upload build artifacts (in addition to the GitHub Release, for inspection)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: downcript-windows-release-${{ steps.tag.outputs.version }}
+          path: |
+            dist-electron/*.exe
+            dist-electron/*.blockmap
+            dist-electron/latest.yml
+          if-no-files-found: warn

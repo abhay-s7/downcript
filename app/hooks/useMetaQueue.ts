@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
   cancelMetaJobOnServer,
   createMetaAdGroup,
@@ -13,6 +13,7 @@ import {
 import { TranscriptFormat } from "@/app/lib/services/meta/types";
 import { notifyTaskComplete } from "@/app/lib/services/notifications/completionNotifier";
 import { registerLibraryEntry } from "@/app/lib/services/library/libraryClient";
+import { setSourceActive } from "@/app/lib/services/activity/activeJobTracker";
 
 type OutputFormat = "original" | "hinglish";
 
@@ -24,6 +25,11 @@ export function useMetaQueue() {
   const groupsRef = useRef<MetaAdGroup[]>([]);
   const [groups, setGroups] = useState<MetaAdGroup[]>([]);
   const [isProcessing, setIsProcessing] = useState(false);
+
+  useEffect(() => {
+    setSourceActive("meta", isProcessing);
+    return () => setSourceActive("meta", false);
+  }, [isProcessing]);
 
   const cancelRequestedRef = useRef(false);
   const workerRunningRef = useRef(false);

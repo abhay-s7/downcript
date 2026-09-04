@@ -17,6 +17,7 @@ import { getNamingTemplate } from "@/app/lib/services/settings/namingPreference"
 import { notifyTaskComplete } from "@/app/lib/services/notifications/completionNotifier";
 import { registerLibraryEntry } from "@/app/lib/services/library/libraryClient";
 import { kindForExtension } from "@/app/lib/services/library/types";
+import { setSourceActive } from "@/app/lib/services/activity/activeJobTracker";
 
 const ACTIVE_STATUSES: DownloadCardStatus[] = ["preparing", "downloading", "processing"];
 
@@ -30,6 +31,15 @@ export function useDownloadQueue() {
   const cardsRef = useRef<DownloadCard[]>([]);
   const [cards, setCards] = useState<DownloadCard[]>([]);
   const [isProcessing, setIsProcessing] = useState(false);
+
+  // Reported to a shared tracker so the update banner (mounted at the top
+  // level, with no direct access to this hook's own instance) can warn
+  // before "Restart & Install" if any queue -- not just this one -- is
+  // still busy.
+  useEffect(() => {
+    setSourceActive("download", isProcessing);
+    return () => setSourceActive("download", false);
+  }, [isProcessing]);
 
   const runningLanesRef = useRef(0);
   const activeControllersRef = useRef<Map<string, AbortController>>(new Map());

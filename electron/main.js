@@ -3,6 +3,7 @@ const path = require("node:path");
 const fs = require("node:fs");
 const net = require("node:net");
 const { spawn } = require("node:child_process");
+const { setupAutoUpdater } = require("./autoUpdater");
 
 // Two ways this app can get its UI:
 //
@@ -688,7 +689,15 @@ if (!gotSingleInstanceLock) {
     }
   });
 
-  app.whenReady().then(launch);
+  app.whenReady().then(() => {
+    launch();
+    // Runs exactly once regardless of how many times launch() itself
+    // re-runs (macOS can call it again via "activate" after all windows
+    // close) -- getMainWindow is a lazy getter so a later-recreated window
+    // still receives update broadcasts correctly, not a stale reference to
+    // the first one.
+    setupAutoUpdater({ getMainWindow: () => mainWindow, appendLog });
+  });
 
   app.on("window-all-closed", () => {
     if (process.platform !== "darwin") app.quit();
