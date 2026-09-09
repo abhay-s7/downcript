@@ -1,0 +1,117 @@
+name: Update Cycle Test
+
+# Manually-triggered verification that electron-updater actually works
+# end-to-end against real, already-published GitHub Releases -- not just
+# that the release contains the right files (windows-build.yml/mac-build.yml/
+# release.yml already check that), but that a real installed old version can
+# detect a new one, download it, apply it via NSISUpdater/Squirrel.Mac, and
+# come back up as the new version with user data (Media Library, etc.)
+# intact. Deliberately not tied to push/tag -- it only makes sense to run
+# once two consecutive versions are both already live releases, so it's
+# invoked by hand (or from automation that just published a new release)
+# with the two version numbers to test.
+on:
+  workflow_dispatch:
+    inputs:
+      from_version:
+        description: "Already-installed version to start from (must be a published release)"
+        required: true
+      to_version:
+        description: "Newer version it should detect and update to (must be a published release)"
+        required: true
+
+jobs:
+  update-test-windows:
+    runs-on: windows-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+
+      - name: Install Playwright (CI-only; not persisted to package.json)
+        shell: bash
+        env:
+          PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: "1"
+        run: npm install --no-save playwright
+
+      - name: Download the "from" version installer from its real GitHub Release
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl -L --fail -o installer.exe \
+            "https://github.com/${{ github.repository }}/releases/download/v${{ inputs.from_version }}/Downcript-Setup-${{ inputs.from_version }}.exe"
+
+      - name: Silent-install it
+        shell: pwsh
+        run: |
+          Start-Process -FilePath "installer.exe" -ArgumentList "/S", "/D=C:\DowncriptApp" -Wait
+          $installedExe = Get-ChildItem -Path "C:\DowncriptApp" -Filter "*.exe" -File |
+            Where-Object { $_.Name -notlike "Uninstall*" } |
+            Select-Object -First 1
+          if (-not $installedExe) { throw "Installed app .exe not found under C:\DowncriptApp" }
+          echo "INSTALLED_EXE=$($installedExe.FullName)" >> $env:GITHUB_ENV
+
+      - name: Run the real update-cycle test
+        shell: bash
+        run: node scripts/ci-windows-update-test.mjs "$INSTALLED_EXE" "${{ inputs.to_version }}"
+
+      - name: Upload persisted app log
+        if: always()
+        shell: bash
+        continue-on-error: true
+        run: cp "$APPDATA/downcript/logs/app.log" app-log.txt 2>/dev/null || echo "no app.log found"
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        continue-on-error: true
+        with:
+          name: windows-update-test-log
+          path: app-log.txt
+          if-no-files-found: ignore
+
+  update-test-mac:
+    runs-on: macos-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+
+      - name: Install Playwright (CI-only; not persisted to package.json)
+        env:
+          PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: "1"
+        run: npm install --no-save playwright
+
+      - name: Download and install the "from" version from its real GitHub Release
+        run: |
+          set -euo pipefail
+          curl -L --fail -o downcript.dmg \
+            "https://github.com/${{ github.repository }}/releases/download/v${{ inputs.from_version }}/Downcript-${{ inputs.from_version }}-arm64.dmg"
+          hdiutil attach -noautoopen -quiet downcript.dmg -mountpoint /Volumes/DowncriptUpdateTest
+          cp -R "/Volumes/DowncriptUpdateTest/Downcript.app" /Applications/
+          hdiutil detach /Volumes/DowncriptUpdateTest
+
+      - name: Run the real update-cycle test
+        run: node scripts/ci-mac-update-test.mjs /Applications/Downcript.app "${{ inputs.to_version }}"
+
+      - name: Upload persisted app log
+        if: always()
+        continue-on-error: true
+        run: cp "$HOME/Library/Application Support/downcript/logs/app.log" app-log.txt 2>/dev/null || echo "no app.log found"
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        continue-on-error: true
+        with:
+          name: macos-update-test-log
+          path: app-log.txt
+          if-no-files-found: ignore
