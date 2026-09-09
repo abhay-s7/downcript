@@ -186,4 +186,14 @@ main()
     console.error("[update-test] FAILED:", err);
     process.exitCode = 1;
   })
-  .finally(() => clearTimeout(watchdog));
+  .finally(() => {
+    clearTimeout(watchdog);
+    // Deliberately not just letting the event loop drain: if quitAndInstall()
+    // never actually closed the app (e.g. because Squirrel.Mac's apply step
+    // stalled or failed silently), the still-open Playwright/CDP connection
+    // to it keeps the process alive indefinitely -- exactly what produced a
+    // job that hung for the rest of its timeout window instead of failing
+    // fast, on the first real run of this script. Force termination once
+    // main() has settled, regardless of what's still open.
+    process.exit(process.exitCode ?? 0);
+  });

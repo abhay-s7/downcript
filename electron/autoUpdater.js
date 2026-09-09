@@ -102,7 +102,15 @@ function setupAutoUpdater({ getMainWindow, appendLog }) {
     // Renderer decides whether to warn the user about active jobs first
     // (it has the queue visibility to do that; this process doesn't) --
     // by the time this is called, that confirmation has already happened.
-    autoUpdater.quitAndInstall();
+    //
+    // electron-updater's quitAndInstall(isSilent, isForceRunAfter) defaults
+    // BOTH args to false -- confirmed via a real end-to-end CI test, where
+    // omitting them launched the Windows NSIS installer in full wizard mode
+    // instead of the silent "Restart & Install" this UI promises, leaving it
+    // sitting on a screen nobody is there to click through. isSilent=true
+    // matches the intended UX; isForceRunAfter=true keeps the existing
+    // auto-relaunch behavior.
+    autoUpdater.quitAndInstall(true, true);
   });
 }
 
