@@ -167,6 +167,7 @@ jobs:
 
       - name: Upload build artifacts (in addition to the GitHub Release, for inspection)
         if: always()
+        continue-on-error: true
         uses: actions/upload-artifact@v4
         with:
           name: downcript-windows-release-${{ steps.tag.outputs.version }}
@@ -282,6 +283,7 @@ jobs:
 
       - name: Upload build artifacts (in addition to the GitHub Release, for inspection)
         if: always()
+        continue-on-error: true
         uses: actions/upload-artifact@v4
         with:
           name: downcript-macos-release-${{ steps.tag.outputs.version }}

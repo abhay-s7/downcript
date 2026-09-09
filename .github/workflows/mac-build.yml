@@ -108,6 +108,13 @@ jobs:
           printf '  %s\n' "${dmgs[@]}" "${zips[@]}"
 
       - name: Upload macOS installer artifact
+        # Convenience-only (lets a human download the dmg/zip for manual
+        # inspection outside a Release) -- must never gate the smoke test
+        # below, which is the step that actually proves anything. GitHub's
+        # Actions storage quota has a real "recalculated every 6-12 hours"
+        # lag after deleting old artifacts, so a transient quota failure
+        # here must not abort the rest of the job.
+        continue-on-error: true
         uses: actions/upload-artifact@v4
         with:
           name: downcript-macos-installer
@@ -170,6 +177,7 @@ jobs:
 
       - uses: actions/upload-artifact@v4
         if: always()
+        continue-on-error: true
         with:
           name: macos-app-log
           path: app-log.txt
