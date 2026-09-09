@@ -42,7 +42,10 @@
       "icon": "build/icon.icns",
       "category": "public.app-category.productivity",
       "identity": null,
-      "target": [{ "target": "dmg", "arch": ["arm64"] }],
+      "target": [
+        { "target": "dmg", "arch": ["arm64"] },
+        { "target": "zip", "arch": ["arm64"] }
+      ],
       "extraResources": [
         { "from": "build-python/dist/darwin/transcribe", "to": "py/transcribe", "filter": ["**/*"] },
         { "from": "build-python/dist/darwin/hinglish", "to": "py/hinglish", "filter": ["**/*"] },
