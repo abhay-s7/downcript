@@ -23,6 +23,7 @@ on:
 jobs:
   update-test-windows:
     runs-on: windows-latest
+    timeout-minutes: 15
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -76,6 +77,7 @@ jobs:
 
   update-test-mac:
     runs-on: macos-latest
+    timeout-minutes: 15
     steps:
       - name: Checkout
         uses: actions/checkout@v4

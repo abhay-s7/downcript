@@ -88,15 +88,21 @@ async function main() {
 
     log("calling updater.quitAndInstall() -- NSISUpdater will run the new installer silently and relaunch...");
     window.evaluate(() => window.desktop.updater.quitAndInstall()).catch(() => {});
-    await sleep(3000);
-    await app.close().catch(() => {});
+
+    // Deliberately NOT calling app.close() here -- NSISUpdater quits this
+    // process and spawns the new installer as a detached child; force-killing
+    // the process too early (what app.close() does under the hood) risks
+    // interrupting that handoff. Let it exit on its own.
+    await app.waitForEvent("close", { timeout: 120_000 }).catch(() => {
+      log("app did not report closing within 120s -- proceeding to check anyway");
+    });
   } catch (err) {
     await app.close().catch(() => {});
     throw err;
   }
 
   log("waiting for NSISUpdater to finish applying the update and relaunching...");
-  await sleep(20_000);
+  await sleep(30_000);
 
   log("relaunching (or confirming the auto-relaunched) app to check version and userData...");
   const { app: app2, window: window2 } = await launchAndGetFooter();
@@ -122,7 +128,18 @@ async function main() {
   );
 }
 
-main().catch((err) => {
-  console.error("[update-test] FAILED:", err);
+// Hard watchdog: every step above has its own timeout, but if something
+// hangs in a way none of them catch (a Playwright call that never resolves,
+// an OS-level dialog blocking the process), this stops the job from silently
+// burning the whole CI run instead of failing fast with a clear signal.
+const watchdog = setTimeout(() => {
+  console.error("[update-test] FAILED: watchdog timeout -- script did not finish within 8 minutes");
   process.exit(1);
-});
+}, 8 * 60_000);
+
+main()
+  .catch((err) => {
+    console.error("[update-test] FAILED:", err);
+    process.exitCode = 1;
+  })
+  .finally(() => clearTimeout(watchdog));
