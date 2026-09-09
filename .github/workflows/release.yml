@@ -1,16 +1,27 @@
-name: Release Windows Build
+name: Release Build
 
-# Cuts an actual GitHub Release with electron-updater-compatible artifacts,
-# triggered by pushing a version tag (see RELEASE.md) -- deliberately a
-# separate workflow from windows-build.yml (which already runs the full
-# build + install + real-transcription/yt-dlp smoke test on every push to
-# main) rather than folding release logic into it, so a normal `git push`
-# never publishes anything and a release only ever happens from a tag an
-# already-smoke-tested commit on main was given.
+# Cuts an actual GitHub Release with electron-updater-compatible artifacts
+# for both Windows and macOS, triggered by pushing a version tag (see
+# RELEASE.md) -- deliberately a separate workflow from windows-build.yml/
+# mac-build.yml (which already run the full build + install + real-
+# transcription/yt-dlp smoke test on every push to main) rather than folding
+# release logic into them, so a normal `git push` never publishes anything
+# and a release only ever happens from a tag an already-smoke-tested commit
+# on main was given.
 #
-# Runs on a real Windows runner for the same reason windows-build.yml does:
-# PyInstaller and ffmpeg-static both produce platform-native binaries that
-# cannot be validly cross-compiled from macOS/Linux.
+# Runs on real Windows/macOS runners for the same reason windows-build.yml/
+# mac-build.yml do: PyInstaller and ffmpeg-static both produce platform-
+# native binaries that cannot be validly cross-compiled between platforms.
+#
+# release-mac deliberately `needs: release-windows` (runs after it, not in
+# parallel) rather than each job racing electron-builder's GitHub publish
+# against the same tag concurrently -- electron-builder has a real,
+# previously-observed bug where a single --publish always run can itself
+# create two separate draft Release objects for one tag; two platforms
+# publishing to the same tag at the same time only compounds that risk. This
+# way at most one electron-builder publish process touches the release at a
+# time, and release-mac's run finds the (by-then-existing) release and adds
+# its own assets to it instead of also trying to create it.
 on:
   push:
     tags:
@@ -163,4 +174,119 @@ jobs:
             dist-electron/*.exe
             dist-electron/*.blockmap
             dist-electron/latest.yml
+          if-no-files-found: warn
+
+  release-mac:
+    needs: release-windows
+    runs-on: macos-latest
+    env:
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Extract version from the pushed tag
+        id: tag
+        run: |
+          set -euo pipefail
+          tag="${GITHUB_REF#refs/tags/}"
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+          echo "version=${tag#v}" >> "$GITHUB_OUTPUT"
+
+      - name: Verify the tag matches package.json's version
+        run: |
+          set -euo pipefail
+          pkg_version="$(node -p "require('./package.json').version")"
+          if [ "$pkg_version" != "${{ steps.tag.outputs.version }}" ]; then
+            echo "Tag ${{ steps.tag.outputs.tag }} does not match package.json version $pkg_version." >&2
+            exit 1
+          fi
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.14"
+
+      - name: Install Node dependencies (fetches the macOS ffmpeg-static binary)
+        run: npm ci
+
+      - name: Install Python build dependencies
+        run: |
+          python3 -m pip install --upgrade pip
+          python3 -m pip install --user -r requirements.txt
+
+      - name: Build Next.js standalone server
+        run: npm run build
+
+      - name: Freeze Python tools for macOS (PyInstaller)
+        run: npm run build:python
+
+      - name: Download yt-dlp macOS binary
+        run: ./scripts/download-yt-dlp.sh darwin
+
+      - name: Verify the macOS runtime was actually generated
+        run: ./scripts/verify-runtime.sh darwin
+
+      - name: Sanity-check bundled binaries are real macOS Mach-O executables
+        run: |
+          set -euo pipefail
+          for exe in \
+            build-python/dist/darwin/transcribe/transcribe \
+            build-python/dist/darwin/hinglish/hinglish \
+            build-python/dist/darwin/ensure_models/ensure_models \
+            vendor/yt-dlp/darwin/yt-dlp \
+            node_modules/ffmpeg-static/ffmpeg
+          do
+            if ! file "$exe" | grep -q "Mach-O"; then
+              echo "$exe is not a Mach-O executable: $(file "$exe")" >&2
+              exit 1
+            fi
+            echo "OK (Mach-O): $exe"
+          done
+
+      # Same rationale as the Windows job above: electron-builder creates the
+      # release if it's missing, or (the expected path here, since
+      # release-windows already ran) adds these assets to the existing one.
+      # dmg + zip are both produced (see package.json's mac target config);
+      # the zip is not a redundant artifact -- electron-updater's MacUpdater
+      # refuses to apply an update at all without one (ERR_UPDATER_ZIP_FILE_NOT_FOUND).
+      - name: Build and publish the macOS installer to GitHub Releases
+        run: npx electron-builder --mac --arm64 --publish always
+
+      - name: Verify update metadata was produced
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          dmgs=(dist-electron/*.dmg)
+          zips=(dist-electron/*.zip)
+          if [ ! -f dist-electron/latest-mac.yml ]; then
+            echo "latest-mac.yml was not generated -- electron-updater has nothing to poll for this release on macOS." >&2
+            exit 1
+          fi
+          if [ ${#dmgs[@]} -eq 0 ]; then
+            echo "No installer .dmg found in dist-electron/" >&2
+            exit 1
+          fi
+          if [ ${#zips[@]} -eq 0 ]; then
+            echo "No .zip found -- MacUpdater cannot apply an update without one." >&2
+            exit 1
+          fi
+          echo "Release artifacts:"
+          ls -la dist-electron/*.dmg dist-electron/*.zip dist-electron/latest-mac.yml 2>/dev/null || true
+
+      - name: Upload build artifacts (in addition to the GitHub Release, for inspection)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: downcript-macos-release-${{ steps.tag.outputs.version }}
+          path: |
+            dist-electron/*.dmg
+            dist-electron/*.zip
+            dist-electron/latest-mac.yml
           if-no-files-found: warn
