@@ -104,15 +104,27 @@ async function main() {
     // quit itself.
     window.evaluate(() => window.desktop.updater.quitAndInstall()).catch(() => {});
 
-    await sleep(3000);
-    await app.close().catch(() => {});
+    // Deliberately NOT calling app.close() here. electron-updater's MacUpdater
+    // downloads the update itself, then serves it to macOS's native Squirrel.Mac
+    // framework over a local HTTP proxy hosted INSIDE this same process (see the
+    // "requested by Squirrel.Mac, pipe ..." log line) -- force-killing the
+    // Electron process (what app.close() does under the hood) while that
+    // transfer/validation is still in flight cuts it off mid-stream, which
+    // looks identical to a real "update rejected" failure but is actually just
+    // this script closing the app too early. Let the app's own quit sequence
+    // run to completion; it will exit on its own once Squirrel.Mac is done
+    // with it (isForceRunAfter defaults to true, so it should also relaunch
+    // itself, but the Info.plist poll below is the real check either way).
+    await app.waitForEvent("close", { timeout: 120_000 }).catch(() => {
+      log("app did not report closing within 120s -- proceeding to check disk state anyway");
+    });
   } catch (err) {
     await app.close().catch(() => {});
     throw err;
   }
 
   log("waiting for Squirrel.Mac to finish applying the update on disk...");
-  const deadline = Date.now() + 90_000;
+  const deadline = Date.now() + 150_000;
   let finalVersion = null;
   while (Date.now() < deadline) {
     await sleep(3000);
@@ -160,7 +172,18 @@ async function main() {
   );
 }
 
-main().catch((err) => {
-  console.error("[update-test] FAILED:", err);
+// Hard watchdog: every step above has its own timeout, but if something
+// hangs in a way none of them catch (a Playwright call that never resolves,
+// an OS-level dialog blocking the process), this stops the job from silently
+// burning the whole CI run instead of failing fast with a clear signal.
+const watchdog = setTimeout(() => {
+  console.error("[update-test] FAILED: watchdog timeout -- script did not finish within 8 minutes");
   process.exit(1);
-});
+}, 8 * 60_000);
+
+main()
+  .catch((err) => {
+    console.error("[update-test] FAILED:", err);
+    process.exitCode = 1;
+  })
+  .finally(() => clearTimeout(watchdog));
