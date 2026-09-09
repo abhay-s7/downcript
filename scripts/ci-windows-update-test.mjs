@@ -142,4 +142,10 @@ main()
     console.error("[update-test] FAILED:", err);
     process.exitCode = 1;
   })
-  .finally(() => clearTimeout(watchdog));
+  .finally(() => {
+    clearTimeout(watchdog);
+    // Force termination once main() has settled, regardless of what's still
+    // open (e.g. a still-running app whose quitAndInstall() never actually
+    // closed it) -- see ci-mac-update-test.mjs for the real hang this fixes.
+    process.exit(process.exitCode ?? 0);
+  });
