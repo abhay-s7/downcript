@@ -1,14 +1,20 @@
 # Auto-Update — Implementation Handoff
 
-> **Status: implemented for Windows, as of 2026-09-04.** Everything this document originally
-> described as "missing" for Windows now exists — see `RELEASE.md` for the actual release
-> process, `electron/autoUpdater.js` for the implementation, and README §19 for the user-facing
-> summary. **The macOS-specific gap this document identified is still open**: mac builds remain
-> ad-hoc signed, not notarized, and (as of this implementation) still only produce a `dmg` target,
-> not the `zip` target Squirrel.Mac's update mechanism actually needs — a real Developer ID +
-> notarization + adding a mac `zip` target are all still required before mac auto-update could
-> work, exactly as described below. Kept as historical context for *why* the Windows
-> implementation was built the way it was; not re-written after the fact.
+> **Status: implemented for Windows (2026-09-04) and macOS packaging/CI (2026-09-10).** Everything
+> this document originally described as "missing" for Windows now exists — see `RELEASE.md` for
+> the actual release process, `electron/autoUpdater.js` for the implementation, and README §19 for
+> the user-facing summary. As of 2026-09-10, macOS also has a real CI build/release pipeline
+> (`mac-build.yml`, the `release-mac` job in `release.yml`) and the `zip` target this document
+> flagged as missing (step 7 below is done — `package.json`'s mac target is now `dmg` + `zip`).
+> **The one item from this document that remains genuinely open is real Apple Developer ID signing
+> + notarization** (step 7's certificate/notarization half). This was verified as a hard blocker,
+> not a theoretical one: a real `v1.0.1 → v1.0.2` update was driven end-to-end on macOS CI —
+> `checkNow` correctly found the new version, `downloadUpdate` completed successfully, and
+> `quitAndInstall` never actually applied it even after several minutes' wait; the installed
+> bundle stayed on the old version the whole time. Squirrel.Mac's refusal to trust an ad-hoc
+> signature is real, exactly as predicted below, not something later config changes worked around.
+> Kept as historical context for *why* the Windows implementation was built the way it was; body
+> not re-written after the fact except where superseded above.
 
 Written from a read-only audit of the codebase (2026-08-27). Nothing described as "missing" below
 has been implemented — this document exists so whoever picks up auto-update next doesn't have to

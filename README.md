@@ -32,9 +32,11 @@ and extract an ad without one blocking the others.
 - **Smart file naming** (§11) — `Creator - Title.ext`, `Title.ext`, or `Creator - Title -
   Platform.ext`, per a Settings preference; a video and its transcript/subtitle share the same
   base name. Collision-safe — nothing gets silently overwritten.
-- **Automatic updates on Windows** (§19) via GitHub Releases — a banner offers to download and
-  install a newer version, never without an explicit click, and never mid-way through active
-  downloads/transcriptions without asking first.
+- **Automatic updates** (§19) via GitHub Releases — a banner offers to download and install a
+  newer version, never without an explicit click, and never mid-way through active
+  downloads/transcriptions without asking first. Fully working end-to-end on Windows (verified);
+  on macOS, updates are detected and downloaded but can't be applied without real Apple Developer
+  signing — see §19/§21.
 - Choose where files save, per section or as a shared default (Settings).
 - Friendly error messages in the UI; technical details go to a debug log (Settings → View logs).
 - A short completion sound (toggleable in Settings, on by default, persists across restarts) when
@@ -266,15 +268,25 @@ downloads are full for now in practice — the very first tagged release has not
 against, and differential updates only shrink later ones once there's a prior release's blockmap
 to compare to; the mechanism is there but hasn't been exercised release-over-release yet.
 
-Not covered: macOS. The `publish` config in `package.json` applies to both platforms
-structurally, but macOS builds are ad-hoc signed (not a real Developer ID) and not notarized —
-Squirrel.Mac refuses to apply an update payload that isn't properly signed and notarized,
-regardless of this feature. There's a second, independent gap too: verified while building this
-feature that electron-builder only writes the update-metadata files (`app-update.yml`,
-`latest-mac.yml`) for a mac target that includes `dmg` or `zip` — this project's mac target is
-`dmg` only, but Squirrel.Mac's actual update mechanism downloads a `zip` of the `.app`, not the
-`dmg` — so even signing/notarizing today's config wouldn't be enough; a `zip` target would need
-adding too. See §21 and `docs/AUTO_UPDATE_HANDOFF.md`.
+**macOS**: the mac target now builds both `dmg` (for install) and `zip` (the update payload
+Squirrel.Mac actually needs — `MacUpdater` throws `ERR_UPDATER_ZIP_FILE_NOT_FOUND` without one, a
+gap this project had at first and has since closed). Detection and download are verified working
+end-to-end against a real published release: an installed old version correctly finds and
+downloads a newer one. The apply step is not, and this is a hard, verified blocker, not a
+theoretical one: an actual `v1.0.1 → v1.0.2` update was driven through `checkNow` →
+`downloadUpdate` → `quitAndInstall` on a real macOS CI runner, downloaded successfully, and
+Squirrel.Mac never applied it even after several minutes — the installed bundle stayed on the old
+version. This is macOS's own update mechanism refusing an update whose signature it can't
+validate; ad-hoc signing (`identity: null`, no paid Apple Developer ID) has no stable identity
+across builds for it to check against. A real Developer ID Application certificate + notarization
+is required to fix this — see §21.
+
+**Also worth knowing**: electron-updater's default GitHub provider always makes an *unauthenticated*
+request to `/releases.atom` before anything else, regardless of platform. If this repository were
+private, every update check would 404 on that request alone — this was hit for real during
+testing and is why the repo is public. A private repo is still possible, but needs
+`electron-updater`'s `PrivateGitHubProvider` (a token baked into every distributed build) instead
+of the default — a meaningfully different, higher-maintenance setup, not a config flag.
 
 ## 20. Project architecture
 
@@ -340,21 +352,27 @@ API routes, the same pattern the app inherited from its transcription pipeline.
   (but real) ad ID than the one you pasted. An invalid or deleted ad ID is still detected
   correctly and shown as unavailable, not confused with this collation behavior.
 - **macOS build is ad-hoc signed, not notarized, and arm64-only** (no Intel Mac support, no
-  universal binary). Gatekeeper may warn on a machine stricter than the one this was built on.
-- **Auto-update is Windows-only.** Reinstalling the `.dmg` is still the only way to update on
-  macOS — its build is ad-hoc signed rather than notarized, which would block Squirrel.Mac from
-  applying an update payload even if it were otherwise wired up. See §19 and
-  [`docs/AUTO_UPDATE_HANDOFF.md`](docs/AUTO_UPDATE_HANDOFF.md) (now annotated as implemented for
-  Windows; the mac-specific gap it originally documented is still open).
+  universal binary — PyInstaller can't cross-build a fat binary, and faster-whisper/torch don't
+  reliably ship universal wheels, so real Intel support would need a full second build on actual
+  x64 hardware, a deliberately separate, not-yet-scoped decision). A fresh, unsigned install is
+  quarantined and App-Translocated by Gatekeeper (confirmed on real hardware: `spctl -a` reports
+  `rejected`, and the app actually runs from a randomized `/private/var/.../AppTranslocation/...`
+  path, not `/Applications`, until the user explicitly trusts it via right-click → Open or System
+  Settings → Privacy & Security → Open Anyway). This is expected Gatekeeper behavior for any
+  unsigned/unnotarized app, not a bug in this project.
+- **macOS auto-update detects and downloads updates correctly, but cannot apply them.** Squirrel.Mac
+  refuses to install an update it can't validate against a stable, trusted signing identity, which
+  ad-hoc signing doesn't provide — confirmed with a real `v1.0.1 → v1.0.2` test that downloaded
+  successfully and then never applied. Reinstalling the `.dmg` is the only way to update on macOS
+  until a real Developer ID Application certificate + notarization are added. See §19 and
+  [`docs/AUTO_UPDATE_HANDOFF.md`](docs/AUTO_UPDATE_HANDOFF.md).
 - **The Windows installer is unsigned** (no Authenticode certificate exists for this project).
-  Auto-update itself still works unsigned — electron-updater doesn't require code signing to
-  detect/download/install an update — but Windows SmartScreen shows an "unknown publisher"
-  warning on every fresh install, update or not. Purely a trust-prompt annoyance, not a
-  functional blocker.
-- **No release has been published yet as of this writing** — `v1.0.0` is the version this phase
-  shipped with, but the actual first tag/release still needs to be created manually (see
-  `RELEASE.md`'s "First release" section) before any update path can be tested against a real
-  GitHub Release.
+  Auto-update itself works unsigned and is verified end-to-end on Windows — a real installed old
+  version detects a new release, downloads it, silently installs it (`quitAndInstall(true, true)` —
+  omitting the silent flag was a real bug caught by this same end-to-end test, since fixed),
+  relaunches itself as the new version, and keeps all user data intact. Windows SmartScreen still
+  shows an "unknown publisher" warning on every fresh install, update or not — a trust-prompt
+  annoyance, not a functional blocker.
 - **CI does not yet cover the Download or Meta Ads modules** — only Upload transcription and
   Dailymotion's bundled yt-dlp are smoke-tested on a real Windows machine today.
 - **Upload accepts MP4 only** (a deliberate, pre-existing scope limit, not new to this app).
