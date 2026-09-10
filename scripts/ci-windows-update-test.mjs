@@ -4,6 +4,7 @@
 // GitHub Release, then confirms the relaunched app is the new version and
 // that userData (Media Library, etc.) survived.
 import { _electron as electron } from "playwright";
+import { execFileSync } from "node:child_process";
 
 const [, , appPath, expectedNewVersion] = process.argv;
 if (!appPath || !expectedNewVersion) {
@@ -104,7 +105,22 @@ async function main() {
   log("waiting for NSISUpdater to finish applying the update and relaunching...");
   await sleep(30_000);
 
-  log("relaunching (or confirming the auto-relaunched) app to check version and userData...");
+  // quitAndInstall(true, true) -- isForceRunAfter -- already auto-relaunches
+  // the updated app on its own; confirmed via the persisted app.log showing
+  // a fresh startup + its own update-check logging "downgrade is disallowed"
+  // against the new version. Launching a second copy via Playwright at this
+  // point collides with electron/main.js's requestSingleInstanceLock() and
+  // fails with a WebSocket/ECONNRESET, not a real signal about the update
+  // itself -- clear any surviving instance first so this launch is clean.
+  try {
+    execFileSync("taskkill", ["/IM", "Downcript.exe", "/F"], { stdio: "ignore" });
+    log("cleared a surviving app instance before the verification relaunch");
+    await sleep(2000);
+  } catch {
+    // Nothing to kill -- fine, proceed.
+  }
+
+  log("relaunching the app to check version and userData...");
   const { app: app2, window: window2 } = await launchAndGetFooter();
   try {
     const footerText = await window2.evaluate(() => document.querySelector("footer")?.textContent ?? "");
