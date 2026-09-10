@@ -14,16 +14,19 @@ interface ExportMenuProps {
   title: string;
   fileBaseName: string;
   segments: TranscriptSegment[];
+  // Matches the transcript's own saved preference -- exports should reflect
+  // how this transcript was generated, not a separate export-time choice.
+  includeTimestamps?: boolean;
 }
 
-export default function ExportMenu({ title, fileBaseName, segments }: ExportMenuProps) {
+export default function ExportMenu({ title, fileBaseName, segments, includeTimestamps = false }: ExportMenuProps) {
   const [open, setOpen] = useState(false);
   const [exportingDocx, setExportingDocx] = useState(false);
 
   async function handleExportDocx() {
     setExportingDocx(true);
     try {
-      const blob = await buildSingleDocxBlob(title, segments);
+      const blob = await buildSingleDocxBlob(title, segments, includeTimestamps);
       triggerDownload(blob, `${fileBaseName}.docx`);
     } finally {
       setExportingDocx(false);
@@ -31,7 +34,7 @@ export default function ExportMenu({ title, fileBaseName, segments }: ExportMenu
   }
 
   function handleExportTxt() {
-    triggerTextDownload(buildTxt(title, segments), `${fileBaseName}.txt`, "text/plain");
+    triggerTextDownload(buildTxt(title, segments, includeTimestamps), `${fileBaseName}.txt`, "text/plain");
     setOpen(false);
   }
 

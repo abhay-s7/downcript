@@ -22,6 +22,13 @@ export interface TranscriptionJob {
   // Fields needed to actually run (or retry) the job. Only the ones
   // relevant to `source` are populated.
   outputFormat: OutputFormat;
+  // Whether the transcript viewer/exports should show [HH:MM:SS] labels for
+  // this job. Purely a display/export concern -- never sent to the server,
+  // since every source already returns real segment timestamps regardless
+  // of this setting. Chosen once at job creation (mirrors outputFormat) so
+  // retrying a job keeps using the same choice, and a batch of jobs created
+  // at different times can each carry a different value.
+  includeTimestamps: boolean;
   file?: File; // upload
   url?: string; // youtube / instagram
   fileId?: string; // google-drive
@@ -51,18 +58,27 @@ function newJobId(): string {
     : `job-${Date.now()}-${Math.random().toString(36).slice(2)}`;
 }
 
-export function createUploadJob(file: File, outputFormat: OutputFormat): TranscriptionJob {
+export function createUploadJob(
+  file: File,
+  outputFormat: OutputFormat,
+  includeTimestamps: boolean
+): TranscriptionJob {
   return {
     id: newJobId(),
     fileName: file.name,
     source: "upload",
     status: "pending",
     outputFormat,
+    includeTimestamps,
     file,
   };
 }
 
-export function createYoutubeJob(url: string, outputFormat: OutputFormat): TranscriptionJob {
+export function createYoutubeJob(
+  url: string,
+  outputFormat: OutputFormat,
+  includeTimestamps: boolean
+): TranscriptionJob {
   let label = "YouTube Transcript";
   try {
     const parsed = new URL(url.trim());
@@ -78,11 +94,16 @@ export function createYoutubeJob(url: string, outputFormat: OutputFormat): Trans
     source: "youtube",
     status: "pending",
     outputFormat,
+    includeTimestamps,
     url,
   };
 }
 
-export function createInstagramJob(url: string, outputFormat: OutputFormat): TranscriptionJob {
+export function createInstagramJob(
+  url: string,
+  outputFormat: OutputFormat,
+  includeTimestamps: boolean
+): TranscriptionJob {
   const reelId = extractInstagramReelId(url);
   return {
     id: newJobId(),
@@ -90,11 +111,16 @@ export function createInstagramJob(url: string, outputFormat: OutputFormat): Tra
     source: "instagram",
     status: "pending",
     outputFormat,
+    includeTimestamps,
     url,
   };
 }
 
-export function createDailymotionJob(url: string, outputFormat: OutputFormat): TranscriptionJob {
+export function createDailymotionJob(
+  url: string,
+  outputFormat: OutputFormat,
+  includeTimestamps: boolean
+): TranscriptionJob {
   const videoId = extractDailymotionVideoId(url);
   return {
     id: newJobId(),
@@ -102,6 +128,7 @@ export function createDailymotionJob(url: string, outputFormat: OutputFormat): T
     source: "dailymotion",
     status: "pending",
     outputFormat,
+    includeTimestamps,
     url,
   };
 }
@@ -109,7 +136,8 @@ export function createDailymotionJob(url: string, outputFormat: OutputFormat): T
 export function createGoogleDriveJob(
   file: { id: string; name: string },
   resourceKey: string | null,
-  outputFormat: OutputFormat
+  outputFormat: OutputFormat,
+  includeTimestamps: boolean
 ): TranscriptionJob {
   return {
     id: newJobId(),
@@ -117,6 +145,7 @@ export function createGoogleDriveJob(
     source: "google-drive",
     status: "pending",
     outputFormat,
+    includeTimestamps,
     fileId: file.id,
     resourceKey,
   };

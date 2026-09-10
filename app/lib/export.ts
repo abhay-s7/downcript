@@ -4,6 +4,7 @@ import { TranscriptSegment } from "@/app/types";
 export interface ExportableVideo {
   title: string;
   segments: TranscriptSegment[];
+  includeTimestamps?: boolean;
 }
 
 function cleanText(text: string): string {
@@ -27,12 +28,24 @@ function joinFragments(current: string, next: string): string {
     .trim();
 }
 
+export interface TranscriptParagraph {
+  text: string;
+  // Real start time (seconds) of the first segment that contributed to this
+  // paragraph -- never estimated/interpolated from paragraph length.
+  start: number;
+}
+
 // Whisper segments are transcription chunks, not paragraphs: group them into
 // readable paragraphs on pauses, sentence endings, or length, rather than
-// treating every segment boundary as a paragraph break.
-export function formatTranscriptAsParagraphs(segments: TranscriptSegment[]): string[] {
-  const paragraphs: string[] = [];
+// treating every segment boundary as a paragraph break. Timestamps are never
+// touched by this grouping -- each paragraph just remembers the real start
+// time of whichever segment began it.
+export function formatTranscriptAsParagraphsWithTimestamps(
+  segments: TranscriptSegment[]
+): TranscriptParagraph[] {
+  const paragraphs: TranscriptParagraph[] = [];
   let current = "";
+  let currentStart = 0;
   let prevEnd = 0;
 
   for (const segment of segments) {
@@ -47,34 +60,61 @@ export function formatTranscriptAsParagraphs(segments: TranscriptSegment[]): str
         (current.length > MIN_CHARS_FOR_SENTENCE_BREAK && SENTENCE_END_RE.test(current)));
 
     if (shouldBreak) {
-      paragraphs.push(current);
+      paragraphs.push({ text: current, start: currentStart });
       current = "";
     }
 
+    if (!current) currentStart = segment.start;
     current = joinFragments(current, text);
     prevEnd = segment.start + segment.duration;
   }
 
-  if (current) paragraphs.push(current);
+  if (current) paragraphs.push({ text: current, start: currentStart });
   return paragraphs;
 }
 
-function paragraphBlocks(segments: TranscriptSegment[]): Paragraph[] {
-  return formatTranscriptAsParagraphs(segments).map(
+// Plain-text-only convenience for callers that never need timestamps.
+export function formatTranscriptAsParagraphs(segments: TranscriptSegment[]): string[] {
+  return formatTranscriptAsParagraphsWithTimestamps(segments).map((p) => p.text);
+}
+
+// [HH:MM:SS] -- deliberately no milliseconds (unlike SRT's timestamps),
+// since this labels a whole paragraph for a reader, not a precise subtitle
+// cue.
+export function formatTimestampLabel(seconds: number): string {
+  const total = Math.max(0, Math.round(seconds));
+  const h = Math.floor(total / 3600);
+  const m = Math.floor((total % 3600) / 60);
+  const s = total % 60;
+  return `${h.toString().padStart(2, "0")}:${m.toString().padStart(2, "0")}:${s
+    .toString()
+    .padStart(2, "0")}`;
+}
+
+function paragraphLines(segments: TranscriptSegment[], includeTimestamps: boolean): string[] {
+  const paragraphs = formatTranscriptAsParagraphsWithTimestamps(segments);
+  return includeTimestamps
+    ? paragraphs.map((p) => `[${formatTimestampLabel(p.start)}] ${p.text}`)
+    : paragraphs.map((p) => p.text);
+}
+
+function paragraphBlocks(segments: TranscriptSegment[], includeTimestamps: boolean): Paragraph[] {
+  return paragraphLines(segments, includeTimestamps).map(
     (text) => new Paragraph({ children: [new TextRun(text)], spacing: { after: 200 } })
   );
 }
 
 export async function buildSingleDocxBlob(
   title: string,
-  segments: TranscriptSegment[]
+  segments: TranscriptSegment[],
+  includeTimestamps = false
 ): Promise<Blob> {
   const doc = new Document({
     sections: [
       {
         children: [
           new Paragraph({ text: stripExtension(title), heading: HeadingLevel.HEADING_1 }),
-          ...paragraphBlocks(segments),
+          ...paragraphBlocks(segments, includeTimestamps),
         ],
       },
     ],
@@ -87,14 +127,15 @@ export async function buildSingleDocxBlob(
 // browser download, so it needs a Buffer, not a Blob.
 export async function buildSingleDocxBuffer(
   title: string,
-  segments: TranscriptSegment[]
+  segments: TranscriptSegment[],
+  includeTimestamps = false
 ): Promise<Buffer> {
   const doc = new Document({
     sections: [
       {
         children: [
           new Paragraph({ text: stripExtension(title), heading: HeadingLevel.HEADING_1 }),
-          ...paragraphBlocks(segments),
+          ...paragraphBlocks(segments, includeTimestamps),
         ],
       },
     ],
@@ -115,24 +156,24 @@ export async function buildCombinedDocxBlob(videos: ExportableVideo[]): Promise<
         spacing: { before: 400 },
       })
     );
-    children.push(...paragraphBlocks(video.segments));
+    children.push(...paragraphBlocks(video.segments, video.includeTimestamps ?? false));
   }
 
   const doc = new Document({ sections: [{ children }] });
   return Packer.toBlob(doc);
 }
 
-export function buildTxt(title: string, segments: TranscriptSegment[]): string {
-  const paragraphs = formatTranscriptAsParagraphs(segments);
-  return `${stripExtension(title)}\n\n${paragraphs.join("\n\n")}\n`;
+export function buildTxt(title: string, segments: TranscriptSegment[], includeTimestamps = false): string {
+  const lines = paragraphLines(segments, includeTimestamps);
+  return `${stripExtension(title)}\n\n${lines.join("\n\n")}\n`;
 }
 
 const TXT_DIVIDER = "=".repeat(40);
 
 export function buildCombinedTxt(videos: ExportableVideo[]): string {
   const sections = videos.map((v) => {
-    const paragraphs = formatTranscriptAsParagraphs(v.segments);
-    return `${TXT_DIVIDER}\n${stripExtension(v.title)}\n${TXT_DIVIDER}\n\n${paragraphs.join("\n\n")}`;
+    const lines = paragraphLines(v.segments, v.includeTimestamps ?? false);
+    return `${TXT_DIVIDER}\n${stripExtension(v.title)}\n${TXT_DIVIDER}\n\n${lines.join("\n\n")}`;
   });
   return `${sections.join("\n\n\n")}\n`;
 }

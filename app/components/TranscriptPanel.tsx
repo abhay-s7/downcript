@@ -10,6 +10,7 @@ import GoogleDriveInput from "@/app/components/GoogleDriveInput";
 import ProcessingQueue from "@/app/components/ProcessingQueue";
 import TranscriptList from "@/app/components/TranscriptList";
 import TranscriptViewer from "@/app/components/TranscriptViewer";
+import IncludeTimestampsToggle from "@/app/components/IncludeTimestampsToggle";
 import { useTranscriptionQueue } from "@/app/hooks/useTranscriptionQueue";
 import {
   OutputFormat,
@@ -20,12 +21,23 @@ import {
   createYoutubeJob,
 } from "@/app/lib/jobs";
 import { Mode } from "@/app/lib/uiTypes";
+import { getIncludeTimestamps, setIncludeTimestamps } from "@/app/lib/services/settings/timestampPreference";
 
 export default function TranscriptPanel() {
   const [mode, setMode] = useState<Mode>("youtube");
   const [outputFormat, setOutputFormat] = useState<OutputFormat>("original");
+  // Initialized from the persisted preference (lazy initializer so it's only
+  // read once, on mount) and written back whenever the user changes it, so
+  // the next transcription job -- in this session or a future one -- starts
+  // with their last choice.
+  const [includeTimestamps, setIncludeTimestampsState] = useState<boolean>(() => getIncludeTimestamps());
   const [removedJobIds, setRemovedJobIds] = useState<Record<string, true>>({});
   const [viewingJobId, setViewingJobId] = useState<string | null>(null);
+
+  function handleIncludeTimestampsChange(value: boolean) {
+    setIncludeTimestampsState(value);
+    setIncludeTimestamps(value);
+  }
 
   const queue = useTranscriptionQueue();
 
@@ -72,28 +84,40 @@ export default function TranscriptPanel() {
           <SourceSelector mode={mode} onChange={setMode} />
 
           <div className="rounded-lg border border-gray-200 bg-white p-6">
+            <div className="mb-4 pb-4 border-b border-gray-100">
+              <IncludeTimestampsToggle value={includeTimestamps} onChange={handleIncludeTimestampsChange} />
+            </div>
+
             {mode === "youtube" && (
-              <YoutubeInput onSubmit={(url) => queue.addJobs([createYoutubeJob(url, outputFormat)])} />
+              <YoutubeInput
+                onSubmit={(url) => queue.addJobs([createYoutubeJob(url, outputFormat, includeTimestamps)])}
+              />
             )}
             {mode === "instagram" && (
               <InstagramInput
                 outputFormat={outputFormat}
                 onOutputFormatChange={setOutputFormat}
-                onSubmit={(url) => queue.addJobs([createInstagramJob(url, outputFormat)])}
+                onSubmit={(url) =>
+                  queue.addJobs([createInstagramJob(url, outputFormat, includeTimestamps)])
+                }
               />
             )}
             {mode === "dailymotion" && (
               <DailymotionInput
                 outputFormat={outputFormat}
                 onOutputFormatChange={setOutputFormat}
-                onSubmit={(url) => queue.addJobs([createDailymotionJob(url, outputFormat)])}
+                onSubmit={(url) =>
+                  queue.addJobs([createDailymotionJob(url, outputFormat, includeTimestamps)])
+                }
               />
             )}
             {mode === "upload" && (
               <UploadInput
                 outputFormat={outputFormat}
                 onOutputFormatChange={setOutputFormat}
-                onSubmit={(files) => queue.addJobs(files.map((f) => createUploadJob(f, outputFormat)))}
+                onSubmit={(files) =>
+                  queue.addJobs(files.map((f) => createUploadJob(f, outputFormat, includeTimestamps)))
+                }
               />
             )}
             {mode === "drive" && (
@@ -101,7 +125,9 @@ export default function TranscriptPanel() {
                 outputFormat={outputFormat}
                 onOutputFormatChange={setOutputFormat}
                 onSubmit={(files, resourceKey) =>
-                  queue.addJobs(files.map((f) => createGoogleDriveJob(f, resourceKey, outputFormat)))
+                  queue.addJobs(
+                    files.map((f) => createGoogleDriveJob(f, resourceKey, outputFormat, includeTimestamps))
+                  )
                 }
               />
             )}
