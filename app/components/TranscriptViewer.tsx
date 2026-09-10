@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { OutputFormat, TranscriptionJob } from "@/app/lib/jobs";
-import { formatTranscriptAsParagraphs } from "@/app/lib/export";
+import { formatTimestampLabel, formatTranscriptAsParagraphsWithTimestamps } from "@/app/lib/export";
 import { sanitizeFileBaseName } from "@/app/lib/services/filesystem/naming";
 import ExportMenu from "@/app/components/ExportMenu";
 
@@ -32,14 +32,20 @@ export default function TranscriptViewer({
 
   const activeSegments =
     viewFormat === job.outputFormat ? job.transcript : job.originalTranscript ?? job.transcript;
-  const paragraphs = formatTranscriptAsParagraphs(activeSegments);
+  const paragraphs = formatTranscriptAsParagraphsWithTimestamps(activeSegments);
 
+  // Search matches against each paragraph's actual text only -- never
+  // against the timestamp label -- so searching e.g. "12" never matches a
+  // "[00:00:12]" marker instead of real transcript wording.
   const trimmedQuery = query.trim().toLowerCase();
-  const hasAnyMatch = !trimmedQuery || paragraphs.some((p) => p.toLowerCase().includes(trimmedQuery));
+  const hasAnyMatch = !trimmedQuery || paragraphs.some((p) => p.text.toLowerCase().includes(trimmedQuery));
 
   function handleCopy() {
+    const text = job.includeTimestamps
+      ? paragraphs.map((p) => `[${formatTimestampLabel(p.start)}] ${p.text}`).join("\n\n")
+      : paragraphs.map((p) => p.text).join("\n\n");
     navigator.clipboard
-      .writeText(paragraphs.join("\n\n"))
+      .writeText(text)
       .then(() => {
         setCopied(true);
         setTimeout(() => setCopied(false), 1500);
@@ -97,7 +103,14 @@ export default function TranscriptViewer({
         ) : (
           <div className="space-y-5 text-[17px] leading-[1.8] text-gray-800">
             {paragraphs.map((p, i) => (
-              <p key={i}>{highlight(p, query)}</p>
+              <p key={i}>
+                {job.includeTimestamps && (
+                  <span className="text-gray-400 text-sm font-mono mr-2 select-all">
+                    [{formatTimestampLabel(p.start)}]
+                  </span>
+                )}
+                {highlight(p.text, query)}
+              </p>
             ))}
           </div>
         )}
@@ -114,6 +127,7 @@ export default function TranscriptViewer({
           title={job.fileName}
           fileBaseName={sanitizeFileBaseName(job.fileName)}
           segments={activeSegments}
+          includeTimestamps={job.includeTimestamps}
         />
       </div>
     </div>

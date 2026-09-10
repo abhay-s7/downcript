@@ -24,7 +24,7 @@ export default function TranscriptList({
 
   const exportableVideos: ExportableVideo[] = jobs
     .filter((j) => j.transcript)
-    .map((j) => ({ title: j.fileName, segments: j.transcript! }));
+    .map((j) => ({ title: j.fileName, segments: j.transcript!, includeTimestamps: j.includeTimestamps }));
 
   function handleClearAllClick() {
     if (isProcessing) return;

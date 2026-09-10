@@ -42,6 +42,7 @@ export default function TranscriptCard({
           title={job.fileName}
           fileBaseName={sanitizeFileBaseName(job.fileName)}
           segments={job.transcript}
+          includeTimestamps={job.includeTimestamps}
         />
         <button
           onClick={onRemove}
