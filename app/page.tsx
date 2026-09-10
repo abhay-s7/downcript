@@ -43,7 +43,7 @@ export default function Home() {
           </div>
         </div>
       </main>
-      <footer className="py-6 text-center text-xs text-gray-400">Made with ♥ by Abhay · v1.0.3</footer>
+      <footer className="py-6 text-center text-xs text-gray-400">Made with ♥ by Abhay · v1.0.4</footer>
     </>
   );
 }
