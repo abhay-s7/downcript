@@ -24,6 +24,7 @@ on:
       - "package.json"
       - "package-lock.json"
       - "next.config.ts"
+      - "requirements.txt"
       - ".github/workflows/mac-build.yml"
 
 jobs:

@@ -16,6 +16,7 @@ on:
       - "package.json"
       - "package-lock.json"
       - "next.config.ts"
+      - "requirements.txt"
       - ".github/workflows/windows-build.yml"
 
 jobs:
