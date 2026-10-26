@@ -23,7 +23,11 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
       lang="en"
       className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
     >
-      <body className="min-h-full flex flex-col">{children}</body>
+      {/* overflow-hidden here, not min-h-full/flex -- page.tsx's own h-screen
+          grid (sidebar + a single independently-scrolling main column) owns
+          the whole viewport now, so the body itself must never scroll or a
+          second, outer scrollbar appears alongside the real one. */}
+      <body className="h-full overflow-hidden">{children}</body>
     </html>
   );
 }

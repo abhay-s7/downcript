@@ -16,20 +16,20 @@ export default function ConfirmDialog({
   danger?: boolean;
 }) {
   return (
-    <div className="rounded-lg border border-gray-200 bg-gray-50 p-4">
-      <p className="font-medium text-gray-900 mb-1">{title}</p>
-      <p className="text-sm text-gray-600 mb-4">{message}</p>
+    <div className="rounded-2xl border border-line bg-bg-2 p-4">
+      <p className="font-medium text-text mb-1">{title}</p>
+      <p className="text-sm text-text-2 mb-4">{message}</p>
       <div className="flex gap-2">
         <button
           onClick={onCancel}
-          className="text-sm font-medium px-3 py-1.5 rounded-md border border-gray-300 text-gray-700 hover:bg-white transition-colors"
+          className="text-sm font-medium px-3.5 py-2 rounded-[9px] border border-line-2 text-text-2 hover:bg-white transition-colors"
         >
           Cancel
         </button>
         <button
           onClick={onConfirm}
-          className={`text-sm font-medium px-3 py-1.5 rounded-md text-white transition-colors ${
-            danger ? "bg-red-600 hover:bg-red-700" : "bg-blue-600 hover:bg-blue-700"
+          className={`text-sm font-medium px-3.5 py-2 rounded-[9px] text-white transition-[filter] hover:brightness-110 ${
+            danger ? "bg-danger" : "bg-gradient-to-br from-accent to-accent-2"
           }`}
         >
           {confirmLabel}

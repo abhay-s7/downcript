@@ -5,6 +5,7 @@ import { useDownloadQueue } from "@/app/hooks/useDownloadQueue";
 import { useOutputDir } from "@/app/hooks/useOutputDir";
 import DownloadInput from "@/app/components/DownloadInput";
 import DownloadCard from "@/app/components/DownloadCard";
+import { CARD_PAD, LINK_MUTED, PATH_CHIP } from "@/app/lib/uiStyles";
 
 export default function DownloadPanel() {
   const queue = useDownloadQueue();
@@ -18,14 +19,16 @@ export default function DownloadPanel() {
   }, [outputDir, queue.setOutputDir]);
 
   return (
-    <div className="space-y-6">
-      <div className="rounded-lg border border-gray-200 bg-white p-6">
+    <div className="space-y-5">
+      <div className={CARD_PAD}>
         <DownloadInput onSubmit={queue.addUrl} />
 
-        <div className="mt-3 flex items-center gap-2 text-sm text-gray-500">
-          <span>Saving to: {outputDir || "Downloads/Downcript"}</span>
+        <div className="mt-3.5 flex items-center gap-2 text-sm text-text-3">
+          <span>
+            Saving to <span className={PATH_CHIP}>{outputDir || "Downloads/Downcript"}</span>
+          </span>
           {isDesktop && (
-            <button onClick={chooseFolder} className="text-blue-600 hover:underline">
+            <button onClick={chooseFolder} className={LINK_MUTED}>
               Change
             </button>
           )}
@@ -35,10 +38,10 @@ export default function DownloadPanel() {
       {queue.cards.length > 0 && (
         <div className="space-y-3">
           <div className="flex items-center justify-end gap-4 text-sm">
-            <button onClick={queue.clearCompleted} className="text-gray-500 hover:text-gray-800 hover:underline">
+            <button onClick={queue.clearCompleted} className={LINK_MUTED}>
               Clear completed
             </button>
-            <button onClick={queue.clearAll} className="text-gray-500 hover:text-gray-800 hover:underline">
+            <button onClick={queue.clearAll} className={LINK_MUTED}>
               Clear all
             </button>
           </div>

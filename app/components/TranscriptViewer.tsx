@@ -5,6 +5,7 @@ import { OutputFormat, TranscriptionJob } from "@/app/lib/jobs";
 import { formatTimestampLabel, formatTranscriptAsParagraphsWithTimestamps } from "@/app/lib/export";
 import { sanitizeFileBaseName } from "@/app/lib/services/filesystem/naming";
 import ExportMenu from "@/app/components/ExportMenu";
+import { CARD, INPUT, BTN_OUTLINE, SEG, SEG_BTN, SEG_BTN_ON } from "@/app/lib/uiStyles";
 
 function highlight(text: string, query: string) {
   const trimmed = query.trim();
@@ -54,25 +55,20 @@ export default function TranscriptViewer({
   }
 
   return (
-    <div className="rounded-lg border border-gray-200 bg-white p-8">
-      <button
-        onClick={onBack}
-        className="text-sm font-medium text-gray-500 hover:text-gray-900 transition-colors mb-4"
-      >
+    <div className={`${CARD} p-8`}>
+      <button onClick={onBack} className="text-sm font-medium text-text-2 hover:text-text transition-colors mb-4">
         ← Back to Transcripts
       </button>
 
       <div className="flex items-center justify-between mb-4 gap-4">
-        <h1 className="text-lg font-semibold text-gray-900 truncate">{job.fileName}</h1>
+        <h1 className="text-lg font-semibold text-text truncate">{job.fileName}</h1>
 
-        <div className="inline-flex rounded-md border border-gray-200 p-0.5 shrink-0">
+        <div className={`${SEG} shrink-0`}>
           <button
             onClick={() => setViewFormat("original")}
             disabled={!availableOriginal}
             title={!availableOriginal ? "Original text isn't available for this transcript." : undefined}
-            className={`px-3 py-1 rounded text-sm font-medium transition-colors disabled:opacity-30 disabled:cursor-not-allowed ${
-              viewFormat === "original" ? "bg-gray-900 text-white" : "text-gray-600 hover:text-gray-900"
-            }`}
+            className={`disabled:opacity-30 disabled:cursor-not-allowed ${viewFormat === "original" ? SEG_BTN_ON : SEG_BTN}`}
           >
             Original
           </button>
@@ -80,9 +76,7 @@ export default function TranscriptViewer({
             onClick={() => setViewFormat("hinglish")}
             disabled={!availableHinglish}
             title={!availableHinglish ? "This transcript wasn't generated as Hinglish." : undefined}
-            className={`px-3 py-1 rounded text-sm font-medium transition-colors disabled:opacity-30 disabled:cursor-not-allowed ${
-              viewFormat === "hinglish" ? "bg-gray-900 text-white" : "text-gray-600 hover:text-gray-900"
-            }`}
+            className={`disabled:opacity-30 disabled:cursor-not-allowed ${viewFormat === "hinglish" ? SEG_BTN_ON : SEG_BTN}`}
           >
             Hinglish
           </button>
@@ -93,19 +87,19 @@ export default function TranscriptViewer({
         type="text"
         value={query}
         onChange={(e) => setQuery(e.target.value)}
-        placeholder="Search transcript..."
-        className="w-full rounded-md border border-gray-300 px-3.5 py-2 text-sm mb-6 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+        placeholder="Search transcript…"
+        className={`${INPUT} mb-6`}
       />
 
       <div className="max-w-[720px] mx-auto">
         {!hasAnyMatch ? (
-          <p className="text-gray-400 text-center py-10">No matching text found.</p>
+          <p className="text-text-3 text-center py-10">No matching text found.</p>
         ) : (
-          <div className="space-y-5 text-[17px] leading-[1.8] text-gray-800">
+          <div className="space-y-5 text-[17px] leading-[1.8] text-text-2">
             {paragraphs.map((p, i) => (
               <p key={i}>
                 {job.includeTimestamps && (
-                  <span className="text-gray-400 text-sm font-mono mr-2 select-all">
+                  <span className="text-text-3 text-sm font-mono mr-2 select-all">
                     [{formatTimestampLabel(p.start)}]
                   </span>
                 )}
@@ -116,11 +110,8 @@ export default function TranscriptViewer({
         )}
       </div>
 
-      <div className="flex items-center justify-between mt-8 pt-6 border-t border-gray-100 max-w-[720px] mx-auto">
-        <button
-          onClick={handleCopy}
-          className="text-sm font-medium px-3 py-1.5 rounded-md border border-gray-300 text-gray-700 hover:bg-gray-50 transition-colors"
-        >
+      <div className="flex items-center justify-between mt-8 pt-6 border-t border-line max-w-[720px] mx-auto">
+        <button onClick={handleCopy} className={BTN_OUTLINE}>
           {copied ? "Copied ✓" : "Copy Transcript"}
         </button>
         <ExportMenu

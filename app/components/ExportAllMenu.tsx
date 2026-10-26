@@ -9,6 +9,7 @@ import {
   triggerDownload,
   triggerTextDownload,
 } from "@/app/lib/export";
+import { EXPORT_BTN_MAIN, EXPORT_BTN_CHEVRON, EXPORT_DROPDOWN, EXPORT_DROPDOWN_ITEM } from "@/app/lib/uiStyles";
 
 export default function ExportAllMenu({ videos }: { videos: ExportableVideo[] }) {
   const [open, setOpen] = useState(false);
@@ -42,32 +43,18 @@ export default function ExportAllMenu({ videos }: { videos: ExportableVideo[] })
 
   return (
     <div className="relative inline-flex">
-      <button
-        onClick={handleExportDocx}
-        disabled={exportingDocx}
-        className="bg-blue-600 text-white px-3 py-1.5 rounded-l text-sm disabled:opacity-50"
-      >
+      <button onClick={handleExportDocx} disabled={exportingDocx} className={EXPORT_BTN_MAIN}>
         {exportingDocx ? "Exporting..." : "Export All DOCX"}
       </button>
-      <button
-        onClick={() => setOpen((o) => !o)}
-        className="bg-blue-600 text-white px-2 py-1.5 rounded-r border-l border-blue-500 text-sm"
-        aria-label="More export formats"
-      >
+      <button onClick={() => setOpen((o) => !o)} className={EXPORT_BTN_CHEVRON} aria-label="More export formats">
         ▼
       </button>
       {open && (
-        <div className="absolute right-0 top-full mt-1 bg-white border rounded shadow z-10 min-w-[100px]">
-          <button
-            onClick={handleExportTxt}
-            className="block w-full text-left px-3 py-1.5 text-sm hover:bg-gray-100"
-          >
+        <div className={EXPORT_DROPDOWN}>
+          <button onClick={handleExportTxt} className={EXPORT_DROPDOWN_ITEM}>
             TXT
           </button>
-          <button
-            onClick={handleExportSrt}
-            className="block w-full text-left px-3 py-1.5 text-sm hover:bg-gray-100"
-          >
+          <button onClick={handleExportSrt} className={EXPORT_DROPDOWN_ITEM}>
             SRT
           </button>
         </div>

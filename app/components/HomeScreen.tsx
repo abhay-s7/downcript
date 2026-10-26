@@ -22,23 +22,24 @@ const ACTIONS: Array<{ section: Section; title: string; description: string }> =
 
 export default function HomeScreen({ onNavigate }: { onNavigate: (section: Section) => void }) {
   return (
-    <div className="pt-4">
-      <div className="text-center pb-10">
-        <h1 className="text-3xl sm:text-4xl font-semibold text-gray-900 tracking-tight mb-3">
+    <div className="pt-2">
+      <p className="font-mono text-[11px] tracking-[.14em] uppercase text-accent mt-3 mb-3.5">Home</p>
+      <h1 className="font-medium text-[clamp(32px,4vw,46px)] leading-[1.05] tracking-[-.04em] mb-5">
+        <span className="bg-gradient-to-r from-text from-20% to-text-3 bg-clip-text text-transparent">
           Download, transcribe, and extract — in one app.
-        </h1>
-        <p className="text-gray-500 max-w-lg mx-auto">Pick a starting point below.</p>
-      </div>
+        </span>
+      </h1>
+      <p className="text-text-2 text-[15.5px] max-w-[540px] mb-10">Pick a starting point below.</p>
 
       <div className="grid gap-4 sm:grid-cols-3">
         {ACTIONS.map((action) => (
           <button
             key={action.section}
             onClick={() => onNavigate(action.section)}
-            className="text-left rounded-lg border border-gray-200 bg-white p-6 hover:border-gray-300 hover:shadow-sm transition-all"
+            className="text-left bg-surface border border-line rounded-2xl p-6 shadow-[0_1px_2px_rgba(20,24,40,.04)] transition-all hover:border-line-2 hover:-translate-y-0.5 hover:shadow-[0_18px_36px_-20px_rgba(20,24,40,.22),0_0_40px_-20px_var(--color-accent-glow)]"
           >
-            <h2 className="text-base font-semibold text-gray-900 mb-1.5">{action.title}</h2>
-            <p className="text-sm text-gray-500 leading-relaxed">{action.description}</p>
+            <h2 className="text-[15px] font-semibold text-text mb-1.5">{action.title}</h2>
+            <p className="text-sm text-text-2 leading-relaxed">{action.description}</p>
           </button>
         ))}
       </div>

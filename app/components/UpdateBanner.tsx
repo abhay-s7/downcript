@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { useAppUpdater } from "@/app/hooks/useAppUpdater";
+import { BANNER_INFO, BANNER_INFO_TEXT, BANNER_PROGRESS_TRACK, BANNER_PROGRESS_FILL, BTN_PRIMARY_SM, LINK } from "@/app/lib/uiStyles";
 
 function formatMBps(bytesPerSecond?: number): string {
   if (!bytesPerSecond) return "";
@@ -30,23 +31,17 @@ export default function UpdateBanner() {
   }
 
   return (
-    <div className="mb-6 rounded-lg border border-blue-200 bg-blue-50 px-4 py-3 text-sm">
+    <div className={BANNER_INFO}>
       {state.status === "available" && (
         <div className="flex items-center justify-between gap-4">
-          <p className="text-blue-800">
+          <p className={BANNER_INFO_TEXT}>
             New version available{state.version ? ` — v${state.version}` : ""}.
           </p>
           <div className="flex items-center gap-3 flex-shrink-0">
-            <button
-              onClick={downloadUpdate}
-              className="rounded-md bg-blue-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-blue-700"
-            >
+            <button onClick={downloadUpdate} className={`${BTN_PRIMARY_SM} !h-auto !py-1.5 text-xs`}>
               Update Now
             </button>
-            <button
-              onClick={() => setDismissedFor(`available:${state.version}`)}
-              className="text-xs text-blue-600 hover:underline"
-            >
+            <button onClick={() => setDismissedFor(`available:${state.version}`)} className={`${LINK} text-xs`}>
               Later
             </button>
           </div>
@@ -54,26 +49,23 @@ export default function UpdateBanner() {
       )}
 
       {state.status === "downloading" && (
-        <div className="space-y-2">
-          <p className="text-blue-800">
+        <div className="space-y-2.5">
+          <p className={BANNER_INFO_TEXT}>
             Downloading update{state.percent !== undefined ? ` — ${Math.round(state.percent)}%` : ""}
             {formatMBps(state.bytesPerSecond)}... The app stays fully usable while this finishes in
             the background.
           </p>
           {state.percent !== undefined && (
-            <div className="h-1.5 w-full max-w-md overflow-hidden rounded-full bg-blue-200">
-              <div
-                className="h-full rounded-full bg-blue-600 transition-all"
-                style={{ width: `${Math.min(100, Math.round(state.percent))}%` }}
-              />
+            <div className={BANNER_PROGRESS_TRACK}>
+              <div className={BANNER_PROGRESS_FILL} style={{ width: `${Math.min(100, Math.round(state.percent))}%` }} />
             </div>
           )}
         </div>
       )}
 
       {state.status === "downloaded" && (
-        <div className="space-y-2">
-          <p className="text-blue-800">
+        <div className="space-y-2.5">
+          <p className={BANNER_INFO_TEXT}>
             Update ready{state.version ? ` — v${state.version}` : ""}.{" "}
             {hasActiveJobs
               ? "Restart when your current tasks are complete, or restart now anyway."
@@ -82,34 +74,25 @@ export default function UpdateBanner() {
 
           {confirmingWithActiveJobs ? (
             <div className="flex items-center gap-3">
-              <span className="text-blue-800">
+              <span className={BANNER_INFO_TEXT}>
                 You still have downloads or transcriptions running — restart and install anyway?
               </span>
               <button
                 onClick={quitAndInstall}
-                className="flex-shrink-0 rounded-md bg-red-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-red-700"
+                className="flex-shrink-0 rounded-[9px] bg-danger px-3 py-1.5 text-xs font-medium text-white hover:brightness-110 transition-[filter]"
               >
                 Restart Anyway
               </button>
-              <button
-                onClick={() => setConfirmingWithActiveJobs(false)}
-                className="flex-shrink-0 text-xs text-blue-600 hover:underline"
-              >
+              <button onClick={() => setConfirmingWithActiveJobs(false)} className={`flex-shrink-0 ${LINK} text-xs`}>
                 Cancel
               </button>
             </div>
           ) : (
             <div className="flex items-center gap-3">
-              <button
-                onClick={handleRestartClick}
-                className="flex-shrink-0 rounded-md bg-blue-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-blue-700"
-              >
+              <button onClick={handleRestartClick} className={`flex-shrink-0 ${BTN_PRIMARY_SM} !h-auto !py-1.5 text-xs`}>
                 Restart &amp; Install
               </button>
-              <button
-                onClick={() => setDismissedFor(`downloaded:${state.version}`)}
-                className="flex-shrink-0 text-xs text-blue-600 hover:underline"
-              >
+              <button onClick={() => setDismissedFor(`downloaded:${state.version}`)} className={`flex-shrink-0 ${LINK} text-xs`}>
                 Later
               </button>
             </div>
@@ -119,8 +102,8 @@ export default function UpdateBanner() {
 
       {state.status === "error" && (
         <div className="flex items-center justify-between gap-4">
-          <p className="text-red-700">Update check failed: {state.error}</p>
-          <button onClick={() => setDismissedFor("error")} className="flex-shrink-0 text-xs text-red-600 hover:underline">
+          <p className="text-danger">Update check failed: {state.error}</p>
+          <button onClick={() => setDismissedFor("error")} className="flex-shrink-0 text-xs text-danger hover:brightness-90 transition-[filter]">
             Dismiss
           </button>
         </div>

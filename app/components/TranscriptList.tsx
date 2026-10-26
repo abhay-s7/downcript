@@ -6,6 +6,7 @@ import { ExportableVideo } from "@/app/lib/export";
 import TranscriptCard from "@/app/components/TranscriptCard";
 import ExportAllMenu from "@/app/components/ExportAllMenu";
 import ConfirmDialog from "@/app/components/ConfirmDialog";
+import { BTN_OUTLINE } from "@/app/lib/uiStyles";
 
 export default function TranscriptList({
   jobs,
@@ -39,7 +40,7 @@ export default function TranscriptList({
   return (
     <section>
       <div className="flex items-center justify-between mb-4">
-        <h2 className="font-semibold text-gray-900">Transcripts ({jobs.length})</h2>
+        <h2 className="font-semibold text-text">Transcripts ({jobs.length})</h2>
         {jobs.length > 0 && (
           <div className="flex items-center gap-2">
             <ExportAllMenu videos={exportableVideos} />
@@ -51,7 +52,7 @@ export default function TranscriptList({
                   ? "Processing is currently active. Cancel processing before clearing transcripts."
                   : undefined
               }
-              className="text-sm font-medium px-3 py-1.5 rounded-md border border-gray-300 text-gray-700 hover:bg-gray-50 transition-colors disabled:opacity-40 disabled:hover:bg-transparent"
+              className={BTN_OUTLINE}
             >
               Clear All
             </button>
@@ -83,7 +84,7 @@ export default function TranscriptList({
       )}
 
       {jobs.length === 0 ? (
-        <p className="text-sm text-gray-400 py-8 text-center border border-dashed border-gray-200 rounded-lg">
+        <p className="text-sm text-text-3 py-8 text-center border border-dashed border-line-2 rounded-2xl">
           No transcripts yet. Choose a source above to get started.
         </p>
       ) : (

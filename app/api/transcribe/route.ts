@@ -5,6 +5,7 @@ import path from "node:path";
 import { TranscriptSegment } from "@/app/types";
 import { convertToHinglish } from "@/app/lib/hinglish";
 import { NoAudioTrackError, transcribeVideoFile } from "@/app/lib/transcribeVideoFile";
+import { isAllowedUploadFile } from "@/app/lib/uploadFormats";
 
 export async function POST(req: NextRequest) {
   let workDir: string | null = null;
@@ -16,17 +17,23 @@ export async function POST(req: NextRequest) {
     const trackingId = typeof jobId === "string" && jobId ? jobId : undefined;
 
     if (!file || !(file instanceof File)) {
-      return NextResponse.json({ error: "Please select a video." }, { status: 400 });
+      return NextResponse.json({ error: "Please select a video or audio file." }, { status: 400 });
     }
 
-    if (!file.name.toLowerCase().endsWith(".mp4")) {
-      return NextResponse.json({ error: "Please select an MP4 video." }, { status: 400 });
+    if (!isAllowedUploadFile(file.name)) {
+      return NextResponse.json(
+        { error: "Please select a supported video or audio file." },
+        { status: 400 }
+      );
     }
 
     const outputFormat = formData.get("outputFormat") === "hinglish" ? "hinglish" : "original";
 
     workDir = await mkdtemp(path.join(tmpdir(), "transcribe-"));
-    const videoPath = path.join(workDir, "video.mp4");
+    // Preserves the real extension (not hardcoded to .mp4 anymore) so ffmpeg
+    // sees a sensible container hint for audio-only uploads too.
+    const ext = path.extname(file.name).toLowerCase();
+    const videoPath = path.join(workDir, `source${ext}`);
     const audioPath = path.join(workDir, "audio.wav");
 
     const bytes = Buffer.from(await file.arrayBuffer());

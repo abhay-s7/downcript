@@ -167,6 +167,7 @@ export async function runMetaTranscribeJob(
   creative: MetaCreativeJob,
   outputFormat: "original" | "hinglish",
   formats: TranscriptFormat[],
+  includeTimestamps: boolean,
   outputDir: string | undefined
 ): Promise<RunMetaTranscribeJobResult> {
   const res = await fetch("/api/meta-transcribe", {
@@ -180,6 +181,7 @@ export async function runMetaTranscribeJob(
       transcriptBaseName: creative.transcriptBaseName,
       outputFormat,
       formats,
+      includeTimestamps,
       jobId: creative.id,
     }),
   });

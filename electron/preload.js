@@ -19,7 +19,33 @@ contextBridge.exposeInMainWorld("desktop", {
   defaultDownloadDir: () => ipcRenderer.invoke("dialog:defaultDownloadDir"),
   openLogsFolder: () => ipcRenderer.invoke("dialog:openLogsFolder"),
   resolveMetaAd: (url) => ipcRenderer.invoke("meta:resolveAd", url),
+  // Competitor Ad Research: structured search results for the native ad
+  // grid, from a hidden BrowserWindow (never shown to the user) that loads
+  // the real facebook.com/ads/library page and reads its embedded JSON --
+  // see electron/main.js's meta:searchAds handler. Only ever the first
+  // batch Meta's page renders server-side.
+  searchMetaAds: (url) => ipcRenderer.invoke("meta:searchAds", url),
+  // Pagination beyond that first batch -- a session is a kept-alive hidden
+  // window; start() loads the page and readies it, more() scrolls it and
+  // returns whatever new ads were found (possibly none), stop() releases
+  // it. See the "Pagination beyond the first batch" comment in main.js.
+  searchMetaAdsSession: {
+    start: (url) => ipcRenderer.invoke("meta:searchSession:start", url),
+    more: (sessionId) => ipcRenderer.invoke("meta:searchSession:more", sessionId),
+    stop: (sessionId) => ipcRenderer.invoke("meta:searchSession:stop", sessionId),
+  },
   notifyTaskComplete: (message) => ipcRenderer.invoke("notification:taskComplete", message),
+  // Ads bookmarked from the native Competitor Ad Research grid.
+  bookmarks: {
+    list: () => ipcRenderer.invoke("bookmarks:list"),
+    toggle: (payload) => ipcRenderer.invoke("bookmarks:toggle", payload),
+    remove: (adArchiveId) => ipcRenderer.invoke("bookmarks:remove", adArchiveId),
+    onChanged: (callback) => {
+      const handler = (_event, entries) => callback(entries);
+      ipcRenderer.on("bookmarks:changed", handler);
+      return () => ipcRenderer.removeListener("bookmarks:changed", handler);
+    },
+  },
   library: {
     list: () => ipcRenderer.invoke("library:list"),
     upsert: (entry) => ipcRenderer.invoke("library:upsert", entry),

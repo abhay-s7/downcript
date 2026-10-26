@@ -178,9 +178,15 @@ export function useLibrary() {
     [runAction]
   );
 
+  const totalSizeBytes = useMemo(
+    () => entries.reduce((sum, e) => sum + (e.sizeBytes ?? 0), 0),
+    [entries]
+  );
+
   return {
     entries: filtered,
     totalCount: entries.length,
+    totalSizeBytes,
     loaded,
     search,
     setSearch,

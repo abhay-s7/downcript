@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { OutputFormat } from "@/app/lib/jobs";
 import OutputFormatToggle from "@/app/components/OutputFormatToggle";
+import { LABEL, INPUT, BTN_PRIMARY, LINK, CHECK_INPUT } from "@/app/lib/uiStyles";
 
 interface DriveFile {
   id: string;
@@ -80,56 +81,39 @@ export default function GoogleDriveInput({
   return (
     <div>
       <form onSubmit={handleScan}>
-        <label className="block text-sm font-medium text-gray-700 mb-1.5">
-          Public Google Drive Folder
-        </label>
-        <div className="flex gap-2">
+        <label className={LABEL}>Public Google Drive Folder</label>
+        <div className="flex gap-2.5">
           <input
             type="text"
             value={url}
             onChange={(e) => setUrl(e.target.value)}
-            placeholder="https://drive.google.com/drive/folders/..."
-            className="flex-1 rounded-md border border-gray-300 px-3.5 py-2.5 text-sm placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+            placeholder="https://drive.google.com/drive/folders/…"
+            className={INPUT}
             required
           />
-          <button
-            type="submit"
-            disabled={scanning}
-            className="rounded-md bg-blue-600 text-white px-5 py-2.5 text-sm font-medium hover:bg-blue-700 transition-colors disabled:opacity-50"
-          >
-            {scanning ? "Scanning..." : "Scan Folder"}
+          <button type="submit" disabled={scanning} className={BTN_PRIMARY}>
+            {scanning ? "Scanning…" : "Scan Folder"}
           </button>
         </div>
       </form>
 
-      {scanError && <p className="text-sm text-red-600 mt-3">{scanError}</p>}
+      {scanError && <p className="text-sm text-danger mt-3">{scanError}</p>}
 
       {files.length > 0 && (
         <div className="mt-5">
           <div className="flex items-center justify-between mb-2">
-            <p className="text-sm font-medium text-gray-700">
+            <p className="text-sm font-medium text-text-2">
               Found {files.length} video{files.length === 1 ? "" : "s"}
             </p>
-            <button
-              onClick={selectAll}
-              className="text-sm font-medium text-blue-600 hover:text-blue-700"
-            >
+            <button onClick={selectAll} className={`${LINK} font-medium`}>
               Select All
             </button>
           </div>
 
-          <div className="rounded-md border border-gray-200 divide-y divide-gray-100 max-h-56 overflow-y-auto mb-4">
+          <div className="rounded-[10px] border border-line divide-y divide-line max-h-56 overflow-y-auto mb-4">
             {files.map((f) => (
-              <label
-                key={f.id}
-                className="flex items-center gap-2.5 px-3.5 py-2 text-sm text-gray-700 cursor-pointer hover:bg-gray-50"
-              >
-                <input
-                  type="checkbox"
-                  checked={f.selected}
-                  onChange={() => toggleFile(f.id)}
-                  className="accent-blue-600"
-                />
+              <label key={f.id} className="flex items-center gap-2.5 px-3.5 py-2 text-sm text-text-2 cursor-pointer hover:bg-bg-2">
+                <input type="checkbox" checked={f.selected} onChange={() => toggleFile(f.id)} className={CHECK_INPUT} />
                 <span className="truncate">{f.name}</span>
               </label>
             ))}
@@ -137,11 +121,7 @@ export default function GoogleDriveInput({
 
           <div className="flex items-center justify-between">
             <OutputFormatToggle value={outputFormat} onChange={onOutputFormatChange} />
-            <button
-              onClick={handleTranscribeSelected}
-              disabled={selected.length === 0}
-              className="rounded-md bg-blue-600 text-white px-5 py-2.5 text-sm font-medium hover:bg-blue-700 transition-colors disabled:opacity-50"
-            >
+            <button onClick={handleTranscribeSelected} disabled={selected.length === 0} className={BTN_PRIMARY}>
               Transcribe Selected
             </button>
           </div>

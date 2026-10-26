@@ -1,8 +1,7 @@
 "use client";
 
-// Same plain-checkbox style as the Settings panel's "Completion sound"
-// toggle -- deliberately not a segmented button pair like OutputFormatToggle,
-// since this is a single on/off choice, not a pick-one-of-several.
+import { CHECK_INPUT, CHECK_LABEL } from "@/app/lib/uiStyles";
+
 export default function IncludeTimestampsToggle({
   value,
   onChange,
@@ -11,13 +10,8 @@ export default function IncludeTimestampsToggle({
   onChange: (value: boolean) => void;
 }) {
   return (
-    <label className="flex items-center gap-2 text-sm text-gray-700 cursor-pointer">
-      <input
-        type="checkbox"
-        checked={value}
-        onChange={(e) => onChange(e.target.checked)}
-        className="accent-blue-600"
-      />
+    <label className={CHECK_LABEL}>
+      <input type="checkbox" checked={value} onChange={(e) => onChange(e.target.checked)} className={CHECK_INPUT} />
       Include timestamps
     </label>
   );

@@ -5,6 +5,7 @@ import { formatTranscriptAsParagraphs } from "@/app/lib/export";
 import { countWords, formatWordCount, getPreviewText } from "@/app/lib/textPreview";
 import { sanitizeFileBaseName } from "@/app/lib/services/filesystem/naming";
 import ExportMenu from "@/app/components/ExportMenu";
+import { CARD, BTN_OUTLINE } from "@/app/lib/uiStyles";
 
 export default function TranscriptCard({
   job,
@@ -22,20 +23,17 @@ export default function TranscriptCard({
   const words = countWords(job.transcript);
 
   return (
-    <div className="rounded-lg border border-gray-200 bg-white p-5 flex flex-col gap-3">
-      <p className="font-medium text-gray-900 truncate">{job.fileName}</p>
+    <div className={`${CARD} p-5 flex flex-col gap-3`}>
+      <p className="font-medium text-text truncate">{job.fileName}</p>
 
-      <p className="text-sm text-gray-500 leading-relaxed line-clamp-2">
+      <p className="text-sm text-text-2 leading-relaxed line-clamp-2">
         {preview || "No speech detected."}
       </p>
 
-      <p className="text-xs text-gray-400">{formatWordCount(words)}</p>
+      <p className="text-xs text-text-3 font-mono">{formatWordCount(words)}</p>
 
       <div className="flex items-center gap-2 pt-1">
-        <button
-          onClick={onOpen}
-          className="text-sm font-medium px-3 py-1.5 rounded-md border border-gray-300 text-gray-700 hover:bg-gray-50 transition-colors"
-        >
+        <button onClick={onOpen} className={BTN_OUTLINE}>
           Open Transcript
         </button>
         <ExportMenu
@@ -47,7 +45,7 @@ export default function TranscriptCard({
         <button
           onClick={onRemove}
           aria-label="Remove transcript"
-          className="ml-auto text-gray-400 hover:text-gray-700 transition-colors w-7 h-7 flex items-center justify-center rounded-md hover:bg-gray-100"
+          className="ml-auto text-text-3 hover:text-text transition-colors w-7 h-7 flex items-center justify-center rounded-[9px] hover:bg-surface-3"
         >
           ×
         </button>
