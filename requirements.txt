@@ -1,3 +1,12 @@
 faster-whisper==1.2.1
+# faster-whisper 1.2.1 itself only declares av>=11 (no upper bound) and
+# calls av.open(..., metadata_errors=...) internally -- that argument was
+# removed in PyAV 19.0.0 (confirmed via PyAV's own changelog), which broke
+# transcription outright once pip started resolving to 19.x with no pin
+# here to stop it (reproduced for real in CI: "TypeError: open() got an
+# unexpected keyword argument 'metadata_errors'"). Capped below the
+# breaking major version, not pinned to one exact version, so patch/minor
+# fixes within 11-18 still apply normally.
+av<19
 aksharamukha==2.3
 yt-dlp
