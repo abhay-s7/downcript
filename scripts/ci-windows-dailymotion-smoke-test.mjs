@@ -11,14 +11,19 @@ function log(step, detail) {
   console.log(`[dm-smoke-test] ${step}${detail !== undefined ? ": " + JSON.stringify(detail) : ""}`);
 }
 
-async function fetchLiveDailymotionUrl() {
-  const res = await fetch("https://api.dailymotion.com/videos?fields=id,url&limit=1");
-  if (!res.ok) throw new Error(`Dailymotion API lookup failed: ${res.status}`);
-  const body = await res.json();
-  const url = body?.list?.[0]?.url;
-  if (!url) throw new Error(`Dailymotion API returned no video: ${JSON.stringify(body)}`);
-  return url;
-}
+// Previously fetched an arbitrary video from Dailymotion's general
+// /videos?limit=1 listing at CI runtime -- no filter or sort, so it could
+// return literally any video in their catalog, with no guarantee that one
+// was actually downloadable (private, region-locked, removed between being
+// listed and being fetched, etc.). That's exactly what broke this test:
+// the video it happened to pick came back "Not found" to yt-dlp, unrelated
+// to any code change. A fixed URL instead -- this one is Dailymotion's own
+// documented oEmbed example ID (developers.dailymotion.com/docs/embed-with-
+// oembed), confirmed downloadable with the exact bundled yt-dlp version as
+// of 2026-10-26 -- trades "always some live video" for "a specific video
+// Dailymotion itself references in public docs," which is far less likely
+// to vanish without notice.
+const DAILYMOTION_SMOKE_TEST_URL = "https://www.dailymotion.com/video/x7tgad0";
 
 async function main() {
   const [, , exePath] = process.argv;
@@ -27,7 +32,7 @@ async function main() {
     process.exit(1);
   }
 
-  const dailymotionUrl = await fetchLiveDailymotionUrl();
+  const dailymotionUrl = DAILYMOTION_SMOKE_TEST_URL;
   log("using live Dailymotion URL", dailymotionUrl);
 
   log("launching installed app", exePath);
