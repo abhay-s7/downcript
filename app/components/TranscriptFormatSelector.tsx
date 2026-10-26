@@ -1,6 +1,7 @@
 "use client";
 
 import { TRANSCRIPT_FORMATS, TranscriptFormat } from "@/app/lib/services/meta/types";
+import { CHECK_INPUT, CHECK_LABEL } from "@/app/lib/uiStyles";
 
 const LABELS: Record<TranscriptFormat, string> = { txt: "TXT", docx: "DOCX", srt: "SRT" };
 
@@ -28,20 +29,15 @@ export default function TranscriptFormatSelector({
   }
 
   return (
-    <div className="flex items-center gap-4 text-sm">
-      <span className="text-gray-500">Transcript format</span>
-      <label className="flex items-center gap-1.5 cursor-pointer text-gray-700">
-        <input type="checkbox" checked={allSelected} onChange={toggleAll} className="accent-blue-600" />
+    <div className="flex items-center gap-5 text-sm flex-wrap">
+      <span className="text-text-3">Transcript format</span>
+      <label className={`${CHECK_LABEL} gap-1.5`}>
+        <input type="checkbox" checked={allSelected} onChange={toggleAll} className={CHECK_INPUT} />
         Select All
       </label>
       {TRANSCRIPT_FORMATS.map((format) => (
-        <label key={format} className="flex items-center gap-1.5 cursor-pointer text-gray-700">
-          <input
-            type="checkbox"
-            checked={selected.has(format)}
-            onChange={() => toggleFormat(format)}
-            className="accent-blue-600"
-          />
+        <label key={format} className={`${CHECK_LABEL} gap-1.5`}>
+          <input type="checkbox" checked={selected.has(format)} onChange={() => toggleFormat(format)} className={CHECK_INPUT} />
           {LABELS[format]}
         </label>
       ))}

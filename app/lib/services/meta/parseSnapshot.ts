@@ -1,15 +1,26 @@
 import { MetaAdManifest, MetaAdType, MetaAdUnavailableError, MetaCreative, MetaCreativeKind } from "@/app/lib/services/meta/types";
 
-interface RawCard {
+export interface RawCard {
   video_hd_url?: string | null;
   video_sd_url?: string | null;
+  // Meta's own poster frame for a video creative -- confirmed present
+  // (non-null) on every real video card/videos[] entry observed via a live
+  // diagnostic capture, null only on cards with no video. Not used by
+  // classifyCard (which only classifies media kind + playback URL) -- read
+  // directly by parseSearchResults.ts for the result grid's thumbnail.
+  video_preview_image_url?: string | null;
   original_image_url?: string | null;
   resized_image_url?: string | null;
   title?: string | null;
 }
 
-interface RawSnapshot {
+export interface RawSnapshot {
   page_name?: string | null;
+  // Meta's own Page id -- confirmed present on real search-result snapshots
+  // via a live diagnostic capture. Lets advertiser selection filter by the
+  // same view_all_page_id param Meta's own frontend uses, instead of only
+  // ever matching on a free-text name.
+  page_id?: string | null;
   // Meta's own classification of the ad -- seen in the wild: "IMAGE",
   // "VIDEO", "CAROUSEL", and "DCO" (Dynamic Creative Optimization: several
   // auto-tested creative variants, NOT a user-facing carousel, even though
@@ -22,13 +33,34 @@ interface RawSnapshot {
   videos?: RawCard[] | null;
   video_hd_url?: string | null;
   video_sd_url?: string | null;
+  // Only ever populated for a DOM-extracted card (see
+  // electron/main.js's EXTRACT_VISIBLE_CARDS_SCRIPT), which has no
+  // cards[]/videos[] array to carry a per-card poster in -- mirrors
+  // RawCard.video_preview_image_url for the single-card fallback path
+  // below.
+  video_preview_image_url?: string | null;
   original_image_url?: string | null;
   resized_image_url?: string | null;
+  // Ad copy / headline fields -- observed shape varies by ad, read
+  // defensively (several candidates tried) by parseSearchResults.ts rather
+  // than assumed present.
+  body?: { text?: string | null } | string | null;
+  title?: string | null;
+  link_description?: string | null;
+  page_profile_picture_url?: string | null;
 }
 
-interface RawAdArchive {
+export interface RawAdArchive {
   ad_archive_id: string;
   snapshot: RawSnapshot;
+  // Fields observed on search-result listing nodes (not always present on
+  // the single-ad deeplink shape) -- used by parseSearchResults.ts. Kept
+  // optional and read defensively there, never assumed present.
+  is_active?: boolean | null;
+  start_date?: number | string | null;
+  start_date_formatted?: string | null;
+  ad_delivery_start_time?: string | null;
+  publisher_platform?: string[] | null;
 }
 
 interface RawDeeplinkResult {
@@ -70,7 +102,10 @@ function findDeeplinkResult(node: unknown, depth = 0): RawDeeplinkResult | null 
   return null;
 }
 
-function classifyCard(card: RawCard): { kind: MetaCreativeKind; url: string } | null {
+// Exported for reuse by parseSearchResults.ts, which classifies the same
+// card shape for search-result listings (multiple ads) rather than a
+// single resolved ad.
+export function classifyCard(card: RawCard): { kind: MetaCreativeKind; url: string } | null {
   const videoUrl = card.video_hd_url || card.video_sd_url;
   if (videoUrl) return { kind: "video", url: videoUrl };
 

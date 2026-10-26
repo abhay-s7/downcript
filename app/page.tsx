@@ -1,7 +1,8 @@
 "use client";
 
 import { useState } from "react";
-import Header from "@/app/components/Header";
+import Sidebar from "@/app/components/Sidebar";
+import Topline from "@/app/components/Topline";
 import ModelSetupBanner from "@/app/components/ModelSetupBanner";
 import UpdateBanner from "@/app/components/UpdateBanner";
 import HomeScreen from "@/app/components/HomeScreen";
@@ -16,10 +17,16 @@ export default function Home() {
   const [section, setSection] = useState<Section>("home");
 
   return (
-    <>
-      <Header section={section} onNavigate={setSection} />
-      <main className="flex-1">
-        <div className="max-w-5xl mx-auto px-6 py-10">
+    <div className="grid grid-cols-[244px_1fr] h-screen">
+      <Sidebar section={section} onNavigate={setSection} />
+
+      <div className="overflow-y-auto relative">
+        <Topline onNavigate={setSection} />
+
+        {/* Meta Ads gets a wider content column (room for the embedded
+            browser), everything else stays at the narrower reading width --
+            matches the reference's `.content:has(#meta.active)` rule. */}
+        <div className={`px-12 pb-20 ${section === "meta" ? "max-w-[1360px] mx-auto" : "max-w-[940px]"}`}>
           <ModelSetupBanner />
           <UpdateBanner />
 
@@ -42,8 +49,7 @@ export default function Home() {
             <LibraryPanel />
           </div>
         </div>
-      </main>
-      <footer className="py-6 text-center text-xs text-gray-400">Made with ♥ by Abhay · v1.1.0</footer>
-    </>
+      </div>
+    </div>
   );
 }

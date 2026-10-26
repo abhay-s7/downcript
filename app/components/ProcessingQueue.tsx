@@ -1,16 +1,17 @@
 "use client";
 
 import { DailymotionProgress, TranscriptionJob } from "@/app/lib/jobs";
+import { BTN_DANGER_OUTLINE, BTN_OUTLINE, PROGRESS_TRACK, PROGRESS_FILL } from "@/app/lib/uiStyles";
 
 const STATUS_META: Record<
   TranscriptionJob["status"],
   { icon: string; color: string; label: string }
 > = {
-  completed: { icon: "✓", color: "text-green-600", label: "Completed" },
-  processing: { icon: "●", color: "text-blue-600", label: "Processing" },
-  pending: { icon: "○", color: "text-gray-400", label: "Waiting" },
-  failed: { icon: "⚠", color: "text-amber-600", label: "Failed" },
-  cancelled: { icon: "—", color: "text-gray-400", label: "Cancelled" },
+  completed: { icon: "✓", color: "text-ok", label: "Completed" },
+  processing: { icon: "●", color: "text-accent", label: "Processing" },
+  pending: { icon: "○", color: "text-text-3", label: "Waiting" },
+  failed: { icon: "⚠", color: "text-warn", label: "Failed" },
+  cancelled: { icon: "—", color: "text-text-3", label: "Cancelled" },
 };
 
 function formatBytes(bytes?: number): string | undefined {
@@ -68,15 +69,15 @@ function statusLabel(job: TranscriptionJob): string {
 // exposes no progress callback here), so it shows elapsed time instead.
 function DailymotionProgressDetail({ progress }: { progress: DailymotionProgress }) {
   if (progress.stage === "downloaded") {
-    return <p className="text-xs text-green-600">✓ Download complete</p>;
+    return <p className="text-xs text-ok">✓ Download complete</p>;
   }
 
   if (progress.stage === "transcribing") {
     const elapsed = formatDuration(progress.elapsedSeconds);
     return (
       <div className="space-y-0.5">
-        <p className="text-xs text-gray-500">Processing audio...</p>
-        {elapsed && <p className="text-xs text-gray-400">Elapsed: {elapsed}</p>}
+        <p className="text-xs text-text-2">Processing audio...</p>
+        {elapsed && <p className="text-xs text-text-3">Elapsed: {elapsed}</p>}
       </div>
     );
   }
@@ -88,16 +89,13 @@ function DailymotionProgressDetail({ progress }: { progress: DailymotionProgress
   const eta = formatDuration(progress.etaSeconds);
 
   return (
-    <div className="space-y-1">
+    <div className="space-y-1.5">
       {progress.percent !== undefined && (
-        <div className="h-1.5 w-full max-w-xs rounded-full bg-gray-100 overflow-hidden">
-          <div
-            className="h-full rounded-full bg-blue-600"
-            style={{ width: `${Math.min(100, Math.max(0, progress.percent))}%` }}
-          />
+        <div className={`${PROGRESS_TRACK} w-full max-w-xs`}>
+          <div className={PROGRESS_FILL} style={{ width: `${Math.min(100, Math.max(0, progress.percent))}%` }} />
         </div>
       )}
-      <div className="flex flex-wrap items-center gap-x-3 text-xs text-gray-500">
+      <div className="flex flex-wrap items-center gap-x-3 text-xs text-text-2 font-mono">
         {sizeLabel && <span>{sizeLabel}</span>}
         {speed && <span>{speed}</span>}
         {eta && <span>ETA: {eta}</span>}
@@ -145,10 +143,10 @@ export default function ProcessingQueue({
     .join(" · ");
 
   return (
-    <section className="rounded-lg border border-gray-200 bg-white">
+    <section className="bg-surface border border-line rounded-2xl shadow-[0_1px_2px_rgba(20,24,40,.04),0_18px_36px_-24px_rgba(20,24,40,.18)]">
       <div className="flex items-center justify-between px-5 py-4">
         <div>
-          <p className="font-medium text-gray-900">
+          <p className="font-medium text-text">
             {currentJob
               ? currentJob.source === "dailymotion"
                 ? statusLabel(currentJob)
@@ -157,7 +155,7 @@ export default function ProcessingQueue({
               ? "Processing paused"
               : "Processing"}
           </p>
-          <p className="text-sm text-gray-500">
+          <p className="text-sm text-text-2">
             {currentJob
               ? `${Math.min(settledCount + 1, jobs.length)} of ${jobs.length} video${
                   jobs.length === 1 ? "" : "s"
@@ -167,49 +165,37 @@ export default function ProcessingQueue({
         </div>
         <div className="flex gap-2">
           {(isProcessing || hasPending) && (
-            <button
-              onClick={onCancel}
-              className="text-sm font-medium px-3 py-1.5 rounded-md border border-red-200 text-red-600 hover:bg-red-50 transition-colors"
-            >
+            <button onClick={onCancel} className={BTN_DANGER_OUTLINE}>
               Cancel Processing
             </button>
           )}
           {!isProcessing && hasCancelled && (
-            <button
-              onClick={onResume}
-              className="text-sm font-medium px-3 py-1.5 rounded-md border border-gray-300 text-gray-700 hover:bg-gray-50 transition-colors"
-            >
+            <button onClick={onResume} className={BTN_OUTLINE}>
               Resume
             </button>
           )}
           {hasFailed && (
-            <button
-              onClick={onRetryFailed}
-              className="text-sm font-medium px-3 py-1.5 rounded-md border border-gray-300 text-gray-700 hover:bg-gray-50 transition-colors"
-            >
+            <button onClick={onRetryFailed} className={BTN_OUTLINE}>
               Retry Failed
             </button>
           )}
         </div>
       </div>
 
-      <div className="border-t border-gray-100 divide-y divide-gray-100">
+      <div className="border-t border-line divide-y divide-line">
         {jobs.map((job) => {
           const meta = STATUS_META[job.status];
           return (
             <div key={job.id} className="px-5 py-2.5">
               <div className="flex items-center gap-2.5">
                 <span className={`${meta.color} font-medium w-4 text-center`}>{meta.icon}</span>
-                <span className="text-sm text-gray-900 truncate flex-1">{job.fileName}</span>
+                <span className="text-sm text-text truncate flex-1">{job.fileName}</span>
                 <span className={`text-xs font-medium ${meta.color}`}>{statusLabel(job)}</span>
               </div>
               {job.status === "failed" && (
                 <div className="pl-[26px] mt-1 flex items-center gap-3">
-                  <p className="text-sm text-gray-500">{job.error}</p>
-                  <button
-                    onClick={() => onRetryJob(job.id)}
-                    className="text-xs font-medium text-blue-600 hover:text-blue-700"
-                  >
+                  <p className="text-sm text-text-2">{job.error}</p>
+                  <button onClick={() => onRetryJob(job.id)} className="text-xs font-medium text-accent hover:text-text transition-colors">
                     Retry
                   </button>
                 </div>

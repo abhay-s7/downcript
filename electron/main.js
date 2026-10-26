@@ -2,6 +2,7 @@ const { app, BrowserWindow, shell, dialog, ipcMain, Notification, session } = re
 const path = require("node:path");
 const fs = require("node:fs");
 const net = require("node:net");
+const crypto = require("node:crypto");
 const { spawn } = require("node:child_process");
 const { setupAutoUpdater } = require("./autoUpdater");
 
@@ -532,6 +533,30 @@ const META_DESKTOP_USER_AGENT =
 const META_RESOLVE_POLL_MS = 750;
 const META_RESOLVE_MAX_ATTEMPTS = 20; // ~15s, covering the challenge's own reload + real page load
 
+// Neither BrowserWindow#loadURL nor webContents#executeJavaScript have a
+// built-in timeout -- each one's promise is only guaranteed to settle if the
+// page genuinely finishes loading / the script genuinely finishes running.
+// A page that never fires its load-finished event (a stuck redirect, a
+// connection Meta never closes, an unusually large/slow render for a
+// high-volume advertiser) or a script that runs long on an unusually large
+// page leaves that promise pending forever, which (before this) left the
+// whole meta:searchAdsSession:start/more call -- and the renderer's awaited
+// IPC call along with it -- hung indefinitely, stuck on "Loading..." with no
+// way to recover. Wrapping every such call bounds it, so the IPC promise the
+// renderer awaits is always guaranteed to settle one way or another.
+function withTimeout(promise, ms, timeoutMessage) {
+  let timer;
+  const timeout = new Promise((_resolve, reject) => {
+    timer = setTimeout(() => reject(new Error(timeoutMessage)), ms);
+  });
+  return Promise.race([promise, timeout]).finally(() => clearTimeout(timer));
+}
+
+const META_LOAD_URL_TIMEOUT_MS = 25000;
+const META_EXEC_JS_TIMEOUT_MS = 10000;
+const META_LOAD_TIMEOUT_MESSAGE =
+  "The Meta Ads Library page took too long to load. This can happen for a very broad search (e.g. All Countries) -- try again, or narrow the search.";
+
 // The only page-format-specific logic that runs inside the hidden window --
 // kept to "find the script tag" only, since this is the hardest part to
 // iterate on if Meta changes something (no devtools, no error output beyond
@@ -564,14 +589,23 @@ ipcMain.handle("meta:resolveAd", async (_event, url) => {
   const win = new BrowserWindow({ show: false });
   try {
     win.webContents.setUserAgent(META_DESKTOP_USER_AGENT);
-    await win.loadURL(`https://www.facebook.com/ads/library/?id=${encodeURIComponent(adId)}`);
+    await withTimeout(
+      win.loadURL(`https://www.facebook.com/ads/library/?id=${encodeURIComponent(adId)}`),
+      META_LOAD_URL_TIMEOUT_MS,
+      META_LOAD_TIMEOUT_MESSAGE
+    );
 
     let raw = null;
     for (let attempt = 0; attempt < META_RESOLVE_MAX_ATTEMPTS && !raw; attempt++) {
       try {
-        raw = await win.webContents.executeJavaScript(FIND_AD_SNAPSHOT_SCRIPT);
+        raw = await withTimeout(
+          win.webContents.executeJavaScript(FIND_AD_SNAPSHOT_SCRIPT),
+          META_EXEC_JS_TIMEOUT_MS,
+          "Timed out reading the Meta Ads Library page."
+        );
       } catch {
-        // Page mid-navigation (the challenge's own reload) -- retry.
+        // Page mid-navigation (the challenge's own reload), or this attempt
+        // timed out -- either way, retry on the next attempt.
       }
       if (!raw) await new Promise((r) => setTimeout(r, META_RESOLVE_POLL_MS));
     }
@@ -583,6 +617,415 @@ ipcMain.handle("meta:resolveAd", async (_event, url) => {
   } finally {
     win.destroy();
   }
+});
+
+// --- Competitor Ad Research: native search + bookmarks --------------------
+//
+// Bookmarked ads, shown in Downscript's own "Bookmarked Ads" view -- same
+// plain flat-JSON-file convention as LIBRARY_FILE above, for the same
+// reasons (single-user desktop app, trivial read/parse size).
+const BOOKMARKS_FILE = path.join(app.getPath("userData"), "bookmarks.json");
+
+let bookmarkEntries = [];
+try {
+  bookmarkEntries = JSON.parse(fs.readFileSync(BOOKMARKS_FILE, "utf8"));
+  if (!Array.isArray(bookmarkEntries)) bookmarkEntries = [];
+} catch {
+  bookmarkEntries = [];
+}
+
+function saveBookmarks() {
+  try {
+    fs.writeFileSync(BOOKMARKS_FILE, JSON.stringify(bookmarkEntries), "utf8");
+  } catch (err) {
+    console.error("Failed to persist bookmarks.json:", err);
+  }
+}
+
+function broadcastBookmarksChanged() {
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.webContents.send("bookmarks:changed", bookmarkEntries);
+  }
+}
+
+ipcMain.handle("bookmarks:list", () => bookmarkEntries);
+
+ipcMain.handle("bookmarks:remove", (_event, adArchiveId) => {
+  bookmarkEntries = bookmarkEntries.filter((b) => b.adArchiveId !== adArchiveId);
+  saveBookmarks();
+  broadcastBookmarksChanged();
+  return bookmarkEntries;
+});
+
+// Called directly from the renderer's native ad cards (bookmarks:toggle
+// below) -- the card data comes straight from this process's own
+// meta:searchAds results, so every field here was already produced by this
+// app, not typed in by the page. `url` is still
+// checked the same way regardless, same isAllowedMetaLibraryUrl gate as
+// every other Meta URL in this file.
+const BOOKMARK_CARD_FIELDS = [
+  "pageId",
+  "pageName",
+  "pageProfilePictureUrl",
+  "isActive",
+  "bodyText",
+  "headline",
+  "mediaType",
+  "creativeKind",
+  "thumbnailUrl",
+  "videoUrl",
+  "platforms",
+  "startDateLabel",
+];
+
+function toggleBookmark(payload) {
+  if (!payload || typeof payload.adArchiveId !== "string" || !payload.adArchiveId) {
+    throw new Error("Invalid bookmark payload.");
+  }
+  if (typeof payload.url !== "string" || !isAllowedMetaLibraryUrl(payload.url)) {
+    throw new Error("Invalid bookmark URL.");
+  }
+  const existingIndex = bookmarkEntries.findIndex((b) => b.adArchiveId === payload.adArchiveId);
+  let bookmarked;
+  if (existingIndex >= 0) {
+    bookmarkEntries.splice(existingIndex, 1);
+    bookmarked = false;
+  } else {
+    const entry = { adArchiveId: payload.adArchiveId, url: payload.url, savedAt: Date.now() };
+    for (const field of BOOKMARK_CARD_FIELDS) {
+      if (payload[field] !== undefined && payload[field] !== null) entry[field] = payload[field];
+    }
+    bookmarkEntries.unshift(entry);
+    bookmarked = true;
+  }
+  saveBookmarks();
+  broadcastBookmarksChanged();
+  return bookmarked;
+}
+
+ipcMain.handle("bookmarks:toggle", (_event, payload) => toggleBookmark(payload));
+
+// Meta's Ads Library is a public, no-login transparency tool -- the hidden
+// windows below (meta:resolveAd, meta:searchAds) should never need to leave
+// facebook.com's /ads/ path. Anything else is rejected before it's ever
+// loaded.
+function isAllowedMetaLibraryUrl(urlString) {
+  try {
+    const u = new URL(urlString);
+    const hostOk = u.hostname === "www.facebook.com" || u.hostname === "facebook.com";
+    return hostOk && u.pathname.startsWith("/ads/");
+  } catch {
+    return false;
+  }
+}
+
+// Reuses the exact same hidden-BrowserWindow + data-sjs technique as
+// meta:resolveAd above (a real, already-shipped Electron browsing context,
+// not a scraping library) but applied to a search RESULTS page instead of
+// one known ad, collecting every ad-archive-shaped node found instead of
+// just the first. Only the "find candidate JSON blocks" part runs inside
+// the hidden window -- shape validation/normalization happens back in
+// TypeScript (parseSearchResults.ts), same division of responsibility as
+// the single-ad path.
+//
+// Meta's data-sjs tags are a one-time SSR hydration payload -- confirmed via
+// a live diagnostic capture earlier in this project (reconfirmed again:
+// flat at the same count/script-tag total across 6+ scroll rounds) that
+// they do NOT update as the page scrolls/paginates client-side, so this
+// alone only ever returns the first batch Meta's server rendered (observed:
+// roughly 10-30 results). Pagination beyond that first batch is handled
+// separately below (meta:searchSession:start/more), which doesn't rely on
+// data-sjs at all -- see that section's own comment for how.
+const FIND_SEARCH_RESULTS_SCRIPT = `
+  (function() {
+    const scripts = Array.from(document.querySelectorAll('script[type="application/json"][data-sjs]'));
+    const seen = new Set();
+    const results = [];
+    function walk(node, depth) {
+      if (depth > 30 || node === null || typeof node !== 'object') return;
+      if (!Array.isArray(node) && typeof node.ad_archive_id === 'string' && node.snapshot && typeof node.snapshot === 'object') {
+        if (!seen.has(node.ad_archive_id)) {
+          seen.add(node.ad_archive_id);
+          results.push(node);
+        }
+      }
+      const values = Array.isArray(node) ? node : Object.values(node);
+      for (const v of values) walk(v, depth + 1);
+    }
+    for (const s of scripts) {
+      if (!s.textContent || !s.textContent.includes("ad_archive_id")) continue;
+      try {
+        walk(JSON.parse(s.textContent), 0);
+      } catch {
+        // Not valid/relevant JSON -- skip this block.
+      }
+    }
+    return results;
+  })();
+`;
+
+ipcMain.handle("meta:searchAds", async (_event, url) => {
+  if (typeof url !== "string" || !isAllowedMetaLibraryUrl(url)) {
+    throw new Error("Unsupported Meta Ads Library URL.");
+  }
+
+  const win = new BrowserWindow({ show: false });
+  try {
+    win.webContents.setUserAgent(META_DESKTOP_USER_AGENT);
+    await withTimeout(win.loadURL(url), META_LOAD_URL_TIMEOUT_MS, META_LOAD_TIMEOUT_MESSAGE);
+
+    let raw = null;
+    for (let attempt = 0; attempt < META_RESOLVE_MAX_ATTEMPTS && (!raw || raw.length === 0); attempt++) {
+      try {
+        raw = await withTimeout(
+          win.webContents.executeJavaScript(FIND_SEARCH_RESULTS_SCRIPT),
+          META_EXEC_JS_TIMEOUT_MS,
+          "Timed out reading the Meta Ads Library page."
+        );
+      } catch {
+        // Page mid-navigation (the challenge's own reload), or this attempt
+        // timed out -- either way, retry on the next attempt.
+      }
+      if (!raw || raw.length === 0) await new Promise((r) => setTimeout(r, META_RESOLVE_POLL_MS));
+    }
+
+    // Genuinely zero results (or Meta's format changed) is a valid, real
+    // outcome -- return an empty array rather than throwing, so the
+    // renderer can show "no results" instead of a generic error.
+    return raw || [];
+  } finally {
+    win.destroy();
+  }
+});
+
+// --- Pagination beyond the first batch -------------------------------
+//
+// Two earlier attempts at this both tried to capture Meta's own network
+// traffic via a CDP debugger session and both failed in real testing (see
+// this file's git history) -- "target closed while handling command", and
+// separately a session that captured zero new ads across repeated scroll
+// rounds. This does neither: a live diagnostic capture confirmed that even
+// though data-sjs stays frozen (see FIND_SEARCH_RESULTS_SCRIPT above), the
+// actual rendered DOM keeps growing as the page is scrolled -- new ad cards
+// are genuinely added, each showing its own "Library ID: <digits>" text
+// (the same id data-sjs calls ad_archive_id). This scans for that text
+// directly instead, with ordinary scroll + executeJavaScript calls -- the
+// same mechanism already proven reliable everywhere else in this file, no
+// debugger protocol involved at all.
+//
+// A "session" is a hidden BrowserWindow kept alive between "more" calls (so
+// repeat scrolling continues from where the page already is), destroyed on
+// explicit stop, app quit, or after sitting idle for a while.
+const EXTRACT_VISIBLE_CARDS_SCRIPT = `
+  (function() {
+    // Walks up from a "Library ID:" text node to the ad card containing it
+    // -- the first ancestor with an image or video descendant and a
+    // plausible amount of text, the same "walk up a bounded number of
+    // parents" approach already used elsewhere in this file for the
+    // (now-removed) bookmark button injection, which this reuses because it
+    // already proved reliable against this exact page.
+    function findCard(textNode) {
+      var node = textNode.parentElement;
+      for (var i = 0; i < 12 && node; i++) {
+        if ((node.querySelector('img') || node.querySelector('video')) && node.innerText && node.innerText.length > 80 && node.innerText.length < 4000) {
+          return node;
+        }
+        node = node.parentElement;
+      }
+      return null;
+    }
+
+    // Everything here is read defensively -- a field this can't confidently
+    // find is left undefined/null rather than guessed at, same as every
+    // other extraction path in this app.
+    function fieldsFromCard(card, id) {
+      var text = card.innerText || '';
+      var isActive;
+      if (/(^|\\n)Inactive(\\n|$)/.test(text)) isActive = false;
+      else if (/(^|\\n)Active(\\n|$)/.test(text)) isActive = true;
+
+      var dateMatch = text.match(/Library ID:\\s*[0-9]+\\n([^\\n]+)/);
+      var startDate = dateMatch ? dateMatch[1].trim() : null;
+
+      var lines = text.split('\\n').map(function (l) { return l.trim(); }).filter(Boolean);
+      var sponsoredIdx = lines.indexOf('Sponsored');
+      var pageName = sponsoredIdx > 0 ? lines[sponsoredIdx - 1] : null;
+      var bodyText = sponsoredIdx >= 0 && lines[sponsoredIdx + 1] ? lines[sponsoredIdx + 1] : null;
+
+      var video = card.querySelector('video');
+      var videoSrc = null;
+      var posterSrc = null;
+      if (video) {
+        var source = video.querySelector('source');
+        videoSrc = video.currentSrc || video.src || (source && source.src) || null;
+        // Meta sets this directly on the element -- confirmed via a live
+        // capture to be the real poster frame, never the advertiser's
+        // small profile-picture avatar (see below).
+        posterSrc = video.poster || null;
+      }
+
+      // The advertiser's own profile picture is ALSO an <img> inside this
+      // same card (it's part of the card header, rendered before the
+      // creative in DOM order) -- confirmed via a live capture to always be
+      // exactly 60x60, identical across every ad from that advertiser. An
+      // earlier version of this script took the first <img> found, which
+      // was that avatar, not the ad's own creative -- explaining cards that
+      // showed "a generic advertiser logo" instead of their real preview.
+      // The real creative image (when the ad has one) is always larger, so
+      // picking the single largest <img> above that known avatar size is
+      // what actually tells them apart; if nothing bigger is found, there
+      // genuinely isn't a creative image available this way, which is
+      // reported as such (null) rather than silently falling back to the
+      // avatar.
+      var AVATAR_MAX_DIMENSION = 60;
+      var creativeImgSrc = null;
+      var creativeArea = 0;
+      var imgs = card.querySelectorAll('img');
+      for (var k = 0; k < imgs.length; k++) {
+        var im = imgs[k];
+        var rect = im.getBoundingClientRect();
+        var w = im.naturalWidth || rect.width;
+        var h = im.naturalHeight || rect.height;
+        if (w <= AVATAR_MAX_DIMENSION && h <= AVATAR_MAX_DIMENSION) continue;
+        var area = w * h;
+        if (area > creativeArea) {
+          creativeArea = area;
+          creativeImgSrc = im.src;
+        }
+      }
+
+      return {
+        ad_archive_id: id,
+        is_active: typeof isActive === 'boolean' ? isActive : null,
+        start_date_formatted: startDate,
+        snapshot: {
+          page_name: pageName,
+          body: bodyText ? { text: bodyText } : null,
+          display_format: videoSrc ? 'VIDEO' : (creativeImgSrc ? 'IMAGE' : null),
+          video_hd_url: videoSrc,
+          video_preview_image_url: videoSrc ? (posterSrc || creativeImgSrc) : null,
+          original_image_url: videoSrc ? null : creativeImgSrc,
+        },
+      };
+    }
+
+    var walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT, null);
+    var seen = {};
+    var results = [];
+    var n;
+    while ((n = walker.nextNode())) {
+      if (!n.textContent || n.textContent.indexOf('Library ID:') === -1) continue;
+      var m = n.textContent.match(/Library ID:\\s*([0-9]+)/);
+      if (!m || seen[m[1]]) continue;
+      seen[m[1]] = true;
+      var card = findCard(n);
+      if (!card) continue;
+      results.push(fieldsFromCard(card, m[1]));
+    }
+    return results;
+  })();
+`;
+
+const SEARCH_SESSION_SCROLL_WAIT_MS = 3500; // time for newly-scrolled-in cards to actually render
+const SEARCH_SESSION_IDLE_TIMEOUT_MS = 10 * 60 * 1000; // destroy a session nobody's touched in 10 minutes
+
+const activeSearchSessions = new Map(); // sessionId -> { win, seenIds, idleTimer }
+
+function destroySessionRecord(rec) {
+  clearTimeout(rec.idleTimer);
+  try {
+    if (!rec.win.isDestroyed()) rec.win.destroy();
+  } catch {
+    // Already gone.
+  }
+}
+
+function destroySearchSession(sessionId) {
+  const rec = activeSearchSessions.get(sessionId);
+  if (!rec) return;
+  activeSearchSessions.delete(sessionId);
+  destroySessionRecord(rec);
+}
+
+function armIdleTimer(rec, sessionId) {
+  clearTimeout(rec.idleTimer);
+  rec.idleTimer = setTimeout(() => destroySearchSession(sessionId), SEARCH_SESSION_IDLE_TIMEOUT_MS);
+}
+
+ipcMain.handle("meta:searchSession:start", async (_event, url) => {
+  if (typeof url !== "string" || !isAllowedMetaLibraryUrl(url)) {
+    throw new Error("Unsupported Meta Ads Library URL.");
+  }
+  const sessionId = crypto.randomUUID();
+  const win = new BrowserWindow({ show: false });
+  const rec = { win, seenIds: new Set(), idleTimer: null };
+  try {
+    win.webContents.setUserAgent(META_DESKTOP_USER_AGENT);
+    await withTimeout(win.loadURL(url), META_LOAD_URL_TIMEOUT_MS, META_LOAD_TIMEOUT_MESSAGE);
+    // The first screenful needs a moment to actually paint before the first
+    // "more" call scrolls past it -- otherwise the first scroll can outrun
+    // Meta's own initial render.
+    await new Promise((r) => setTimeout(r, 2000));
+    activeSearchSessions.set(sessionId, rec);
+    armIdleTimer(rec, sessionId);
+    return { sessionId };
+  } catch (err) {
+    destroySessionRecord(rec);
+    throw err;
+  }
+});
+
+ipcMain.handle("meta:searchSession:more", async (_event, sessionId) => {
+  const rec = activeSearchSessions.get(sessionId);
+  if (!rec) throw new Error("This search session has expired. Please search again.");
+  armIdleTimer(rec, sessionId);
+
+  try {
+    await withTimeout(
+      rec.win.webContents.executeJavaScript(
+        "window.scrollTo(0, document.body.scrollHeight); document.dispatchEvent(new Event('scroll'));"
+      ),
+      META_EXEC_JS_TIMEOUT_MS,
+      "Timed out scrolling the Meta Ads Library page."
+    );
+  } catch (err) {
+    appendLog(`meta searchSession scroll failed: ${err}\n`);
+  }
+
+  await new Promise((r) => setTimeout(r, SEARCH_SESSION_SCROLL_WAIT_MS));
+
+  let found = [];
+  try {
+    found =
+      (await withTimeout(
+        rec.win.webContents.executeJavaScript(EXTRACT_VISIBLE_CARDS_SCRIPT),
+        META_EXEC_JS_TIMEOUT_MS,
+        "Timed out reading the Meta Ads Library page."
+      )) || [];
+  } catch (err) {
+    appendLog(`meta searchSession extract failed: ${err}\n`);
+  }
+
+  const newAds = [];
+  for (const node of found) {
+    if (node && typeof node.ad_archive_id === "string" && !rec.seenIds.has(node.ad_archive_id)) {
+      rec.seenIds.add(node.ad_archive_id);
+      newAds.push(node);
+    }
+  }
+  // One compact line per newly found ad -- its id and which kind of media
+  // (if any) extraction found for it, never the actual media URL (those
+  // carry Meta CDN auth tokens in the query string).
+  for (const ad of newAds) {
+    const snapshot = ad.snapshot || {};
+    const mediaType = snapshot.video_hd_url ? "video" : snapshot.original_image_url ? "image" : "none";
+    appendLog(`meta searchSession ad=${ad.ad_archive_id} media=${mediaType}\n`);
+  }
+  return { ads: newAds };
+});
+
+ipcMain.handle("meta:searchSession:stop", (_event, sessionId) => {
+  destroySearchSession(sessionId);
 });
 
 // The one Library registration path that has no explicit caller: the main
@@ -711,6 +1154,7 @@ if (!gotSingleInstanceLock) {
 function cleanupBeforeQuit() {
   stopLocalServer();
   stopActiveTools();
+  for (const sessionId of Array.from(activeSearchSessions.keys())) destroySearchSession(sessionId);
 }
 
 app.on("before-quit", cleanupBeforeQuit);

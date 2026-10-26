@@ -9,8 +9,12 @@ import { extractMetaAdId } from "@/app/lib/services/meta/urlValidation";
 import MetaAdInput from "@/app/components/MetaAdInput";
 import MetaAdBatchInput from "@/app/components/MetaAdBatchInput";
 import MetaAdCard from "@/app/components/MetaAdCard";
+import CompetitorAdResearch from "@/app/components/CompetitorAdResearch";
+import IncludeTimestampsToggle from "@/app/components/IncludeTimestampsToggle";
 import OutputFormatToggle from "@/app/components/OutputFormatToggle";
 import TranscriptFormatSelector from "@/app/components/TranscriptFormatSelector";
+import { getIncludeTimestamps, setIncludeTimestamps } from "@/app/lib/services/settings/timestampPreference";
+import { CARD_PAD, DIVIDER, LINK_MUTED, PATH_CHIP } from "@/app/lib/uiStyles";
 
 export default function MetaAdPanel() {
   const queue = useMetaQueue();
@@ -24,6 +28,16 @@ export default function MetaAdPanel() {
   const [transcriptFormats, setTranscriptFormats] = useState<Set<TranscriptFormat>>(
     () => new Set(["docx"])
   );
+  // Shared with the Transcript tab's own toggle (same localStorage-backed
+  // preference, app/lib/services/settings/timestampPreference.ts) rather
+  // than a second independent setting -- picking it here also becomes the
+  // default next time the Transcript tab is opened, and vice versa.
+  const [includeTimestamps, setIncludeTimestampsState] = useState<boolean>(() => getIncludeTimestamps());
+
+  function handleIncludeTimestampsChange(value: boolean) {
+    setIncludeTimestampsState(value);
+    setIncludeTimestamps(value);
+  }
 
   useEffect(() => {
     queue.setOutputDir(outputDir);
@@ -48,7 +62,7 @@ export default function MetaAdPanel() {
 
   if (!isDesktop) {
     return (
-      <div className="rounded-lg border border-gray-200 bg-white p-6 text-sm text-gray-500">
+      <div className="bg-surface border border-line rounded-2xl p-6 text-sm text-text-2">
         Meta Ad extraction needs to run inside the desktop app — it isn&apos;t available in a plain
         browser tab.
       </div>
@@ -62,22 +76,26 @@ export default function MetaAdPanel() {
   }
 
   return (
-    <div className="space-y-6">
-      <div className="rounded-lg border border-gray-200 bg-white p-6">
+    <div className="space-y-5">
+      <div className={CARD_PAD}>
         <MetaAdInput onSubmit={queue.addUrl} />
 
-        <div className="mt-3 flex items-center justify-between text-sm text-gray-500">
+        <div className="mt-3.5 flex items-center justify-between text-sm text-text-3 flex-wrap gap-2.5">
           <div className="flex items-center gap-2">
-            <span>Saving to: {outputDir || "Downloads/Downcript"}</span>
-            <button onClick={chooseFolder} className="text-blue-600 hover:underline">
+            <span>
+              Saving to <span className={PATH_CHIP}>{outputDir || "Downloads/Downcript"}</span>
+            </span>
+            <button onClick={chooseFolder} className={LINK_MUTED}>
               Change
             </button>
           </div>
           <OutputFormatToggle value={outputFormat} onChange={setOutputFormat} />
         </div>
 
-        <div className="mt-3 pt-3 border-t border-gray-100">
+        <div className={DIVIDER} />
+        <div className="flex items-center justify-between flex-wrap gap-2">
           <TranscriptFormatSelector selected={transcriptFormats} onChange={setTranscriptFormats} />
+          <IncludeTimestampsToggle value={includeTimestamps} onChange={handleIncludeTimestampsChange} />
         </div>
 
         <MetaAdBatchInput existingAdIds={existingAdIds} onAddUrls={handleAddBatchUrls} />
@@ -86,10 +104,7 @@ export default function MetaAdPanel() {
       {queue.groups.length > 0 && (
         <div className="space-y-3">
           <div className="flex items-center justify-end">
-            <button
-              onClick={queue.clearCompleted}
-              className="text-sm text-gray-500 hover:text-gray-800 hover:underline"
-            >
+            <button onClick={queue.clearCompleted} className={LINK_MUTED}>
               Clear completed
             </button>
           </div>
@@ -103,16 +118,21 @@ export default function MetaAdPanel() {
               onDownloadAll={() => queue.downloadAll(group.id)}
               onCancelCreative={(creativeId) => queue.cancelCreative(group.id, creativeId)}
               onTranscriptOnly={(creativeId) =>
-                queue.transcriptOnly(group.id, creativeId, outputFormat, formatsList)
+                queue.transcriptOnly(group.id, creativeId, outputFormat, formatsList, includeTimestamps)
               }
               onDownloadAndTranscript={(creativeId) =>
-                queue.downloadAndTranscribe(group.id, creativeId, outputFormat, formatsList)
+                queue.downloadAndTranscribe(group.id, creativeId, outputFormat, formatsList, includeTimestamps)
               }
               onRemove={() => queue.removeGroup(group.id)}
             />
           ))}
         </div>
       )}
+
+      {/* Secondary workflow, deliberately last: Analyze Meta Ad (above) and
+          its results are the primary focus, so research stays below them
+          regardless of how many results are showing. */}
+      <CompetitorAdResearch />
     </div>
   );
 }

@@ -2,17 +2,13 @@
 
 import { useRef, useState } from "react";
 import { BatchUrlEntry, BatchUrlStatus, classifyBatchInput } from "@/app/lib/services/meta/batchParse";
-
-const PRIMARY_BUTTON =
-  "inline-flex items-center justify-center h-9 px-4 rounded-md text-sm font-medium transition-colors bg-blue-600 text-white hover:bg-blue-700 disabled:bg-gray-200 disabled:text-gray-400 disabled:cursor-not-allowed";
-const SECONDARY_BUTTON =
-  "inline-flex items-center justify-center h-9 px-4 rounded-md text-sm font-medium transition-colors border border-gray-300 bg-white text-gray-700 hover:bg-gray-50 hover:border-gray-400 disabled:bg-white disabled:border-gray-200 disabled:text-gray-300 disabled:cursor-not-allowed";
+import { BTN_PRIMARY_SM, BTN_GHOST_SM, LINK, DIVIDER } from "@/app/lib/uiStyles";
 
 const STATUS_BADGE: Record<BatchUrlStatus, string> = {
-  valid: "bg-green-50 text-green-700",
-  duplicate: "bg-amber-50 text-amber-700",
-  invalid: "bg-red-50 text-red-700",
-  unsupported: "bg-red-50 text-red-700",
+  valid: "bg-ok-soft text-ok",
+  duplicate: "bg-warn-soft text-warn",
+  invalid: "bg-danger-soft text-danger",
+  unsupported: "bg-danger-soft text-danger",
 };
 const STATUS_LABEL: Record<BatchUrlStatus, string> = {
   valid: "Valid",
@@ -61,11 +57,12 @@ export default function MetaAdBatchInput({
 
   if (!expanded) {
     return (
-      <div className="mt-3 pt-3 border-t border-gray-100">
-        <button onClick={() => setExpanded(true)} className="text-sm text-blue-600 hover:underline">
-          Batch add multiple ads
+      <>
+        <div className={DIVIDER} />
+        <button onClick={() => setExpanded(true)} className={LINK}>
+          + Batch add multiple ads
         </button>
-      </div>
+      </>
     );
   }
 
@@ -76,11 +73,12 @@ export default function MetaAdBatchInput({
   const unsupported = preview ? countByStatus(preview, "unsupported") : 0;
 
   return (
-    <div className="mt-3 pt-3 border-t border-gray-100">
-      <div className="flex items-center justify-between mb-1.5">
-        <label className="text-sm font-medium text-gray-700">Batch add multiple ads</label>
+    <>
+      <div className={DIVIDER} />
+      <div className="flex items-center justify-between mb-2">
+        <label className="text-sm font-medium text-text-2">Batch add multiple ads</label>
         <div className="flex items-center gap-3">
-          <button onClick={() => fileInputRef.current?.click()} className="text-sm text-blue-600 hover:underline">
+          <button onClick={() => fileInputRef.current?.click()} className={LINK}>
             Import TXT/CSV
           </button>
           <button
@@ -89,18 +87,12 @@ export default function MetaAdBatchInput({
               setText("");
               setPreview(null);
             }}
-            className="text-sm text-gray-400 hover:text-gray-700"
+            className="text-sm text-text-3 hover:text-text transition-colors"
           >
             Close
           </button>
         </div>
-        <input
-          ref={fileInputRef}
-          type="file"
-          accept=".txt,.csv,text/plain,text/csv"
-          onChange={handleImport}
-          className="hidden"
-        />
+        <input ref={fileInputRef} type="file" accept=".txt,.csv,text/plain,text/csv" onChange={handleImport} className="hidden" />
       </div>
 
       <textarea
@@ -113,15 +105,15 @@ export default function MetaAdBatchInput({
           "Paste multiple Meta Ad Library URLs — one per line (or separated by spaces/commas)\nhttps://www.facebook.com/ads/library/?id=...\nhttps://www.facebook.com/ads/library/?id=..."
         }
         rows={4}
-        className="w-full rounded-md border border-gray-300 px-3.5 py-2.5 text-sm placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 font-mono"
+        className="w-full rounded-[10px] border border-line-2 bg-white px-3.5 py-2.5 text-sm font-mono placeholder:text-text-3 shadow-[0_1px_2px_rgba(20,24,40,.05)_inset] transition-colors focus:outline-none focus:border-accent focus:ring-4 focus:ring-accent-soft"
       />
 
-      <div className="mt-2 flex items-center gap-2">
-        <button onClick={handlePreview} disabled={!text.trim()} className={SECONDARY_BUTTON}>
+      <div className="mt-2.5 flex items-center gap-2">
+        <button onClick={handlePreview} disabled={!text.trim()} className={BTN_GHOST_SM}>
           Preview
         </button>
         {preview && (
-          <button onClick={handleAddToQueue} disabled={valid === 0} className={PRIMARY_BUTTON}>
+          <button onClick={handleAddToQueue} disabled={valid === 0} className={BTN_PRIMARY_SM}>
             Add {valid} to queue
           </button>
         )}
@@ -129,22 +121,22 @@ export default function MetaAdBatchInput({
 
       {preview && (
         <div className="mt-3">
-          <p className="text-sm text-gray-600 mb-2">
+          <p className="text-sm text-text-2 mb-2">
             {total} URL{total === 1 ? "" : "s"} found — {valid} valid, {duplicate} duplicate, {invalid} invalid,{" "}
             {unsupported} unsupported.
           </p>
           {total > 0 && (
-            <div className="max-h-48 overflow-y-auto rounded-md border border-gray-100 divide-y divide-gray-100">
+            <div className="max-h-48 overflow-y-auto rounded-[10px] border border-line divide-y divide-line">
               {preview.map((entry, i) => (
                 <div key={i} className="px-3 py-1.5 text-xs flex items-center gap-2">
-                  <span className={`rounded px-1.5 py-0.5 font-medium flex-shrink-0 ${STATUS_BADGE[entry.status]}`}>
+                  <span className={`rounded-full px-2 py-0.5 font-medium flex-shrink-0 ${STATUS_BADGE[entry.status]}`}>
                     {STATUS_LABEL[entry.status]}
                   </span>
-                  <span className="truncate flex-1 text-gray-600" title={entry.raw}>
+                  <span className="truncate flex-1 text-text-2" title={entry.raw}>
                     {entry.raw}
                   </span>
                   {entry.status !== "valid" && entry.reason && (
-                    <span className="text-gray-400 flex-shrink-0">{entry.reason}</span>
+                    <span className="text-text-3 flex-shrink-0">{entry.reason}</span>
                   )}
                 </div>
               ))}
@@ -152,6 +144,6 @@ export default function MetaAdBatchInput({
           )}
         </div>
       )}
-    </div>
+    </>
   );
 }

@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { ModelProgressEvent } from "@/app/desktop";
+import { BANNER_INFO, BANNER_INFO_TEXT, BANNER_PROGRESS_TRACK, BANNER_PROGRESS_FILL } from "@/app/lib/uiStyles";
 
 type Status = "idle" | "checking" | "downloading" | "error" | "done";
 
@@ -75,27 +76,24 @@ export default function ModelSetupBanner() {
       : null;
 
   return (
-    <div className="mb-6 rounded-lg border border-blue-200 bg-blue-50 px-4 py-3 text-sm">
+    <div className={BANNER_INFO}>
       {status === "checking" && (
-        <p className="text-blue-800">Checking local transcription setup...</p>
+        <p className={BANNER_INFO_TEXT}>Checking local transcription setup...</p>
       )}
 
       {status === "downloading" && (
-        <div className="space-y-2">
-          <p className="text-blue-800">
+        <div className="space-y-2.5">
+          <p className={BANNER_INFO_TEXT}>
             Setting up local transcription (one-time download
             {progress?.model ? ` — ${progress.model} model` : ""})...
           </p>
           {pct !== null && (
-            <div className="h-1.5 w-full max-w-md overflow-hidden rounded-full bg-blue-200">
-              <div
-                className="h-full rounded-full bg-blue-600 transition-all"
-                style={{ width: `${pct}%` }}
-              />
+            <div className={BANNER_PROGRESS_TRACK}>
+              <div className={BANNER_PROGRESS_FILL} style={{ width: `${pct}%` }} />
             </div>
           )}
           {pct !== null && progress?.total && (
-            <p className="text-xs text-blue-600">
+            <p className="text-xs text-text-2 font-mono">
               {formatMB(progress.downloaded ?? 0)}MB / {formatMB(progress.total)}MB ({pct}%)
             </p>
           )}
@@ -104,10 +102,10 @@ export default function ModelSetupBanner() {
 
       {status === "error" && (
         <div className="flex items-center justify-between gap-4">
-          <p className="text-red-700">Local transcription setup failed: {error}</p>
+          <p className="text-danger">Local transcription setup failed: {error}</p>
           <button
             onClick={retry}
-            className="shrink-0 rounded-md bg-red-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-red-700"
+            className="shrink-0 rounded-[9px] bg-danger px-3 py-1.5 text-xs font-medium text-white hover:brightness-110 transition-[filter]"
           >
             Retry
           </button>

@@ -2,7 +2,11 @@
 
 import { useRef, useState } from "react";
 import { OutputFormat } from "@/app/lib/jobs";
+import { isAllowedUploadFile, UPLOAD_ALLOWED_EXTENSIONS } from "@/app/lib/uploadFormats";
 import OutputFormatToggle from "@/app/components/OutputFormatToggle";
+import { DROPZONE, BTN_GHOST, BTN_PRIMARY } from "@/app/lib/uiStyles";
+
+const FILE_INPUT_ACCEPT = UPLOAD_ALLOWED_EXTENSIONS.join(",");
 
 export default function UploadInput({
   outputFormat,
@@ -31,11 +35,11 @@ export default function UploadInput({
 
   function handleSubmit() {
     if (files.length === 0) {
-      setError("Please select at least one video.");
+      setError("Please select at least one video or audio file.");
       return;
     }
-    if (files.some((f) => !f.name.toLowerCase().endsWith(".mp4"))) {
-      setError("Please select only MP4 videos.");
+    if (files.some((f) => !isAllowedUploadFile(f.name))) {
+      setError("Please select only supported video or audio files.");
       return;
     }
     setError("");
@@ -53,36 +57,32 @@ export default function UploadInput({
         }}
         onDragLeave={() => setIsDragging(false)}
         onDrop={handleDrop}
-        className={`rounded-lg border-2 border-dashed p-10 text-center transition-colors ${
-          isDragging ? "border-blue-500 bg-blue-50" : "border-gray-300 bg-gray-50"
-        }`}
+        className={`${DROPZONE} ${isDragging ? "border-accent text-accent bg-accent-soft shadow-[0_0_40px_-12px_var(--color-accent-glow)_inset]" : ""}`}
       >
-        <p className="text-gray-700 font-medium mb-1">Drag &amp; drop videos here</p>
-        <p className="text-sm text-gray-400 mb-4">or</p>
-        <button
-          type="button"
-          onClick={() => inputRef.current?.click()}
-          className="rounded-md border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 transition-colors"
-        >
+        <p className="text-text font-medium mb-1">Drag &amp; drop video or audio files here</p>
+        <p className="text-sm text-text-3 mb-4">or</p>
+        <button type="button" onClick={() => inputRef.current?.click()} className={BTN_GHOST}>
           Choose Files
         </button>
         <input
           ref={inputRef}
           type="file"
-          accept="video/mp4,.mp4"
+          accept={FILE_INPUT_ACCEPT}
           multiple
           className="hidden"
           onChange={(e) => e.target.files && addFiles(e.target.files)}
         />
-        <p className="text-xs text-gray-400 mt-4">MP4 files, one or more at a time</p>
+        <p className="text-xs text-text-3 mt-4">
+          MP4, MOV, MP3, WAV, M4A, AAC, FLAC, OGG, OPUS, WMA, and other supported formats
+        </p>
       </div>
 
       {files.length > 0 && (
         <div className="mt-4">
-          <p className="text-sm font-medium text-gray-700 mb-2">
-            {files.length} video{files.length === 1 ? "" : "s"} selected
+          <p className="text-sm font-medium text-text-2 mb-2">
+            {files.length} file{files.length === 1 ? "" : "s"} selected
           </p>
-          <ul className="text-sm text-gray-600 space-y-0.5 mb-4 max-h-36 overflow-y-auto">
+          <ul className="text-sm text-text-2 space-y-0.5 mb-4 max-h-36 overflow-y-auto">
             {files.map((f, i) => (
               <li key={i} className="truncate">
                 {f.name}
@@ -92,17 +92,14 @@ export default function UploadInput({
 
           <div className="flex items-center justify-between">
             <OutputFormatToggle value={outputFormat} onChange={onOutputFormatChange} />
-            <button
-              onClick={handleSubmit}
-              className="rounded-md bg-blue-600 text-white px-5 py-2.5 text-sm font-medium hover:bg-blue-700 transition-colors"
-            >
+            <button onClick={handleSubmit} className={BTN_PRIMARY}>
               Start Transcription
             </button>
           </div>
         </div>
       )}
 
-      {error && <p className="text-sm text-red-600 mt-3">{error}</p>}
+      {error && <p className="text-sm text-danger mt-3">{error}</p>}
     </div>
   );
 }

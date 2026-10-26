@@ -41,9 +41,9 @@ export function useMetaQueue() {
   // whatever format(s) were selected at the moment the combo action was
   // clicked (not re-read later, in case the user changes the checkboxes
   // while the download is still in the queue).
-  const autoTranscribeRef = useRef<Map<string, { outputFormat: OutputFormat; formats: TranscriptFormat[] }>>(
-    new Map()
-  );
+  const autoTranscribeRef = useRef<
+    Map<string, { outputFormat: OutputFormat; formats: TranscriptFormat[]; includeTimestamps: boolean }>
+  >(new Map());
   // "Download All" completion notification: a batch, not N independent
   // tasks -- one sound when every member reaches a terminal state, not one
   // per creative. batchMembersRef maps a creative id to the token of the
@@ -107,14 +107,15 @@ export function useMetaQueue() {
     groupId: string,
     creativeId: string,
     outputFormat: OutputFormat,
-    formats: TranscriptFormat[]
+    formats: TranscriptFormat[],
+    includeTimestamps: boolean
   ) {
     const group = groupsRef.current.find((g) => g.id === groupId);
     const creative = group?.creatives.find((c) => c.id === creativeId);
     if (!creative) return;
 
     updateCreative(groupId, creativeId, { transcriptStatus: "processing", transcriptError: undefined });
-    void runMetaTranscribeJob(creative, outputFormat, formats, outputDirRef.current)
+    void runMetaTranscribeJob(creative, outputFormat, formats, includeTimestamps, outputDirRef.current)
       .then((result) => {
         updateCreative(groupId, creativeId, { transcriptStatus: "completed" });
         // Covers both a standalone "Transcript Only" click and the tail end
@@ -215,7 +216,13 @@ export function useMetaQueue() {
             // own notification when IT finishes -- this download completion
             // is just the combo's first half, not the user's actual end
             // goal, so it stays silent here.
-            startTranscription(groupId, creative.id, autoTranscribe.outputFormat, autoTranscribe.formats);
+            startTranscription(
+              groupId,
+              creative.id,
+              autoTranscribe.outputFormat,
+              autoTranscribe.formats,
+              autoTranscribe.includeTimestamps
+            );
           } else if (!wasBatchMember) {
             // A plain, standalone "Download Video" -- not part of a batch
             // and not the download-half of a combo -- so this genuinely is
@@ -367,8 +374,14 @@ export function useMetaQueue() {
   // download `status`, since a video fetched only for this purpose is
   // deliberately not a kept output.
   const transcriptOnly = useCallback(
-    (groupId: string, creativeId: string, outputFormat: OutputFormat, formats: TranscriptFormat[]) => {
-      startTranscription(groupId, creativeId, outputFormat, formats);
+    (
+      groupId: string,
+      creativeId: string,
+      outputFormat: OutputFormat,
+      formats: TranscriptFormat[],
+      includeTimestamps: boolean
+    ) => {
+      startTranscription(groupId, creativeId, outputFormat, formats, includeTimestamps);
     },
     // startTranscription is a plain function (not useCallback) that only
     // closes over refs and the stable updateCreative, so it's safe to omit
@@ -381,8 +394,14 @@ export function useMetaQueue() {
   // downloadCreative, but records the chosen format(s) so the worker starts
   // transcription automatically the moment the download completes.
   const downloadAndTranscribe = useCallback(
-    (groupId: string, creativeId: string, outputFormat: OutputFormat, formats: TranscriptFormat[]) => {
-      autoTranscribeRef.current.set(creativeId, { outputFormat, formats });
+    (
+      groupId: string,
+      creativeId: string,
+      outputFormat: OutputFormat,
+      formats: TranscriptFormat[],
+      includeTimestamps: boolean
+    ) => {
+      autoTranscribeRef.current.set(creativeId, { outputFormat, formats, includeTimestamps });
       cancelRequestedRef.current = false;
       updateCreative(groupId, creativeId, { status: "pending", error: undefined });
       void runWorker();

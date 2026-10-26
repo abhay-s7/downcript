@@ -4,6 +4,7 @@ import { useState } from "react";
 import { useLibrary, LibrarySortKey, LibraryTypeFilter, LibraryStatusFilter } from "@/app/hooks/useLibrary";
 import { useOutputDir } from "@/app/hooks/useOutputDir";
 import LibraryRow from "@/app/components/LibraryRow";
+import { CARD, INPUT, SELECT_SM, LINK, EMPTY_CARD } from "@/app/lib/uiStyles";
 
 const SORT_OPTIONS: Array<{ value: LibrarySortKey; label: string }> = [
   { value: "date", label: "Date" },
@@ -27,6 +28,12 @@ const STATUS_OPTIONS: Array<{ value: LibraryStatusFilter; label: string }> = [
   { value: "failed", label: "Failed" },
 ];
 
+function formatSize(bytes: number): string {
+  if (!bytes) return "0 MB";
+  const mb = bytes / 1024 / 1024;
+  return mb >= 1024 ? `${(mb / 1024).toFixed(1)} GB` : `${mb.toFixed(1)} MB`;
+}
+
 export default function LibraryPanel() {
   const lib = useLibrary();
   const { outputDir, isDesktop } = useOutputDir();
@@ -48,32 +55,55 @@ export default function LibraryPanel() {
 
   if (!isDesktop) {
     return (
-      <div className="rounded-lg border border-gray-200 bg-white p-6 text-sm text-gray-500">
+      <div className={`${CARD} p-6 text-sm text-text-2`}>
         The Media Library needs to run inside the desktop app — it isn&apos;t available in a plain
         browser tab.
       </div>
     );
   }
 
+  const transcriptCount = lib.entries.filter((e) => e.kind === "transcript").length;
+
   return (
-    <div className="space-y-4">
-      <div className="rounded-lg border border-gray-200 bg-white p-4">
+    <div className="space-y-5">
+      <div>
+        <p className="font-mono text-[11px] tracking-[.14em] uppercase text-accent mb-3.5">Library</p>
+        <h1 className="font-medium text-[clamp(32px,4vw,46px)] leading-[1.05] tracking-[-.04em] mb-5">
+          <span className="bg-gradient-to-r from-text from-20% to-text-3 bg-clip-text text-transparent">
+            Everything you&apos;ve saved.
+          </span>
+        </h1>
+        <p className="text-text-2 text-[15.5px] max-w-[540px]">Videos, audio and transcripts — searchable, in one place.</p>
+      </div>
+
+      <div className="grid grid-cols-3 gap-3.5">
+        <div className={`${CARD} p-5`}>
+          <b className="block font-medium text-[28px] tracking-[-.04em] text-text">{lib.totalCount}</b>
+          <span className="text-xs text-text-3">Items</span>
+        </div>
+        <div className={`${CARD} p-5`}>
+          <b className="block font-medium text-[28px] tracking-[-.04em] text-text">{formatSize(lib.totalSizeBytes)}</b>
+          <span className="text-xs text-text-3">On disk</span>
+        </div>
+        <div className={`${CARD} p-5`}>
+          <b className="block font-medium text-[28px] tracking-[-.04em] text-text">{transcriptCount}</b>
+          <span className="text-xs text-text-3">Transcripts</span>
+        </div>
+      </div>
+
+      <div className={`${CARD} p-4`}>
         <input
           type="text"
           value={lib.search}
           onChange={(e) => lib.setSearch(e.target.value)}
-          placeholder="Search by title, filename, or source..."
-          className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm"
+          placeholder="Search by title, filename, or source…"
+          className={`${INPUT} h-10`}
         />
 
-        <div className="mt-3 flex items-center gap-3 flex-wrap text-sm">
-          <label className="flex items-center gap-1.5 text-gray-500">
+        <div className="mt-3.5 flex items-center gap-4 flex-wrap text-sm">
+          <label className="flex items-center gap-2 text-text-3">
             Sort
-            <select
-              value={lib.sortKey}
-              onChange={(e) => lib.setSortKey(e.target.value as LibrarySortKey)}
-              className="rounded-md border border-gray-300 px-2 py-1"
-            >
+            <select value={lib.sortKey} onChange={(e) => lib.setSortKey(e.target.value as LibrarySortKey)} className={SELECT_SM}>
               {SORT_OPTIONS.map((o) => (
                 <option key={o.value} value={o.value}>
                   {o.label}
@@ -82,13 +112,9 @@ export default function LibraryPanel() {
             </select>
           </label>
 
-          <label className="flex items-center gap-1.5 text-gray-500">
+          <label className="flex items-center gap-2 text-text-3">
             Type
-            <select
-              value={lib.typeFilter}
-              onChange={(e) => lib.setTypeFilter(e.target.value as LibraryTypeFilter)}
-              className="rounded-md border border-gray-300 px-2 py-1"
-            >
+            <select value={lib.typeFilter} onChange={(e) => lib.setTypeFilter(e.target.value as LibraryTypeFilter)} className={SELECT_SM}>
               {TYPE_OPTIONS.map((o) => (
                 <option key={o.value} value={o.value}>
                   {o.label}
@@ -97,13 +123,9 @@ export default function LibraryPanel() {
             </select>
           </label>
 
-          <label className="flex items-center gap-1.5 text-gray-500">
+          <label className="flex items-center gap-2 text-text-3">
             Status
-            <select
-              value={lib.statusFilter}
-              onChange={(e) => lib.setStatusFilter(e.target.value as LibraryStatusFilter)}
-              className="rounded-md border border-gray-300 px-2 py-1"
-            >
+            <select value={lib.statusFilter} onChange={(e) => lib.setStatusFilter(e.target.value as LibraryStatusFilter)} className={SELECT_SM}>
               {STATUS_OPTIONS.map((o) => (
                 <option key={o.value} value={o.value}>
                   {o.label}
@@ -112,26 +134,22 @@ export default function LibraryPanel() {
             </select>
           </label>
 
-          <button
-            onClick={handleScan}
-            disabled={scanning}
-            className="ml-auto text-blue-600 hover:underline disabled:text-gray-400"
-          >
+          <button onClick={handleScan} disabled={scanning} className={`ml-auto ${LINK} disabled:text-text-3`}>
             {scanning ? "Scanning..." : "Scan for existing files"}
           </button>
         </div>
       </div>
 
       {lib.actionError && (
-        <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-2 text-sm text-red-700">
+        <div className="rounded-2xl border border-danger/25 bg-danger-soft px-4 py-2.5 text-sm text-danger">
           {lib.actionError}
         </div>
       )}
 
       {lib.loaded && lib.totalCount === 0 && (
-        <div className="rounded-lg border border-gray-200 bg-white p-10 text-center">
-          <p className="text-sm font-medium text-gray-900 mb-1">Nothing here yet</p>
-          <p className="text-sm text-gray-500">
+        <div className={EMPTY_CARD}>
+          <p className="text-sm font-medium text-text mb-1">Nothing here yet</p>
+          <p className="text-sm text-text-2">
             Downloads, Meta Ads creatives, and transcript exports show up here automatically once
             you have some. Already have files from before? Try &quot;Scan for existing files&quot;
             above.
@@ -140,11 +158,9 @@ export default function LibraryPanel() {
       )}
 
       {lib.loaded && lib.totalCount > 0 && lib.entries.length === 0 && (
-        <div className="rounded-lg border border-gray-200 bg-white p-10 text-center">
-          <p className="text-sm font-medium text-gray-900 mb-1">No matches</p>
-          <p className="text-sm text-gray-500">
-            Nothing matches your search and filters. Try clearing them.
-          </p>
+        <div className={EMPTY_CARD}>
+          <p className="text-sm font-medium text-text mb-1">No matches</p>
+          <p className="text-sm text-text-2">Nothing matches your search and filters. Try clearing them.</p>
         </div>
       )}
 

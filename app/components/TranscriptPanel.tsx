@@ -22,6 +22,7 @@ import {
 } from "@/app/lib/jobs";
 import { Mode } from "@/app/lib/uiTypes";
 import { getIncludeTimestamps, setIncludeTimestamps } from "@/app/lib/services/settings/timestampPreference";
+import { CARD_PAD, DIVIDER } from "@/app/lib/uiStyles";
 
 export default function TranscriptPanel() {
   const [mode, setMode] = useState<Mode>("youtube");
@@ -65,28 +66,32 @@ export default function TranscriptPanel() {
   }
 
   return (
-    <div className="space-y-10">
+    <div className="space-y-8">
       {jobs.length === 0 && (
-        <div className="text-center pt-4 pb-2">
-          <h1 className="text-3xl sm:text-4xl font-semibold text-gray-900 tracking-tight mb-3">
-            Turn any video into a clean transcript.
+        <div className="pt-2 pb-2">
+          <p className="font-mono text-[11px] tracking-[.14em] uppercase text-accent mt-3 mb-3.5">Transcript</p>
+          <h1 className="font-medium text-[clamp(32px,4vw,46px)] leading-[1.05] tracking-[-.04em] mb-5">
+            <span className="bg-gradient-to-r from-text from-20% to-text-3 bg-clip-text text-transparent">
+              Turn any video into a clean transcript.
+            </span>
           </h1>
-          <p className="text-gray-500 max-w-lg mx-auto">
-            Transcribe videos from YouTube, Instagram, Dailymotion, your computer, or a public
-            Google Drive folder.
+          <p className="text-text-2 text-[15.5px] max-w-[540px]">
+            Transcribe videos from YouTube, Instagram, Dailymotion, your computer, or a public Google
+            Drive folder.
           </p>
         </div>
       )}
 
       <div>
-        <p className="text-sm font-medium text-gray-500 mb-3">What do you want to transcribe?</p>
+        <p className="text-sm font-medium text-text-3 mb-3">What do you want to transcribe?</p>
         <div className="flex flex-col gap-5">
           <SourceSelector mode={mode} onChange={setMode} />
 
-          <div className="rounded-lg border border-gray-200 bg-white p-6">
-            <div className="mb-4 pb-4 border-b border-gray-100">
+          <div className={CARD_PAD}>
+            <div className="mb-1">
               <IncludeTimestampsToggle value={includeTimestamps} onChange={handleIncludeTimestampsChange} />
             </div>
+            <div className={DIVIDER} />
 
             {mode === "youtube" && (
               <YoutubeInput

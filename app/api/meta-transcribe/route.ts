@@ -18,6 +18,7 @@ interface MetaTranscribeRequestBody {
   transcriptBaseName?: string;
   outputFormat?: "original" | "hinglish";
   formats?: TranscriptFormat[];
+  includeTimestamps?: boolean;
   jobId?: string;
 }
 
@@ -40,6 +41,7 @@ export async function POST(req: NextRequest) {
   const outputFormat = body.outputFormat === "original" ? "original" : "hinglish";
   const formats: TranscriptFormat[] =
     Array.isArray(body.formats) && body.formats.length > 0 ? body.formats : ["docx"];
+  const includeTimestamps = body.includeTimestamps === true;
 
   if (!transcriptBaseName || (!body.videoPath && !body.videoUrl)) {
     return NextResponse.json({ error: "Missing video." }, { status: 400 });
@@ -98,13 +100,20 @@ export async function POST(req: NextRequest) {
 
     if (formats.includes("txt")) {
       writtenPaths.txt = path.join(exportDir, `${transcriptBaseName}.txt`);
-      writes.push(writeFile(writtenPaths.txt, buildTxt(transcriptBaseName, segments)));
+      writes.push(writeFile(writtenPaths.txt, buildTxt(transcriptBaseName, segments, includeTimestamps)));
     }
     if (formats.includes("docx")) {
       writtenPaths.docx = path.join(exportDir, `${transcriptBaseName}.docx`);
-      writes.push(buildSingleDocxBuffer(transcriptBaseName, segments).then((buf) => writeFile(writtenPaths.docx!, buf)));
+      writes.push(
+        buildSingleDocxBuffer(transcriptBaseName, segments, includeTimestamps).then((buf) =>
+          writeFile(writtenPaths.docx!, buf)
+        )
+      );
     }
     if (formats.includes("srt")) {
+      // SRT is inherently timestamp-based (every cue already carries a real
+      // start/end) -- the checkbox doesn't apply to it, same as the
+      // Transcript tab's own export behavior.
       writtenPaths.srt = path.join(exportDir, `${transcriptBaseName}.srt`);
       writes.push(writeFile(writtenPaths.srt, buildSrt(segments)));
     }

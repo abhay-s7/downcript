@@ -2,8 +2,8 @@
 
 import { useState } from "react";
 import { LibraryEntry } from "@/app/lib/services/library/types";
+import { CARD, CHIP, CHIP_DANGER, LINK_MUTED, LINK_DANGER } from "@/app/lib/uiStyles";
 
-const ACTION_BUTTON = "text-sm text-gray-500 hover:text-gray-900 transition-colors";
 const KIND_LABEL: Record<LibraryEntry["kind"], string> = {
   video: "Video",
   audio: "Audio",
@@ -61,24 +61,20 @@ export default function LibraryRow({
   }
 
   return (
-    <div className="rounded-lg border border-gray-200 bg-white p-4 flex gap-4">
+    <div className={`${CARD} p-4 flex gap-4 transition-[border-color,box-shadow,transform] hover:border-line-2 hover:-translate-y-px hover:shadow-[0_18px_36px_-20px_rgba(20,24,40,.22),0_0_40px_-20px_var(--color-accent-glow)]`}>
       {entry.thumbnail ? (
-        <img src={entry.thumbnail} alt="" className="w-20 h-14 object-cover rounded-md flex-shrink-0" />
+        <img src={entry.thumbnail} alt="" className="w-20 h-14 object-cover rounded-[10px] flex-shrink-0" />
       ) : (
-        <div className="w-20 h-14 rounded-md bg-gray-100 flex items-center justify-center flex-shrink-0">
-          <span className="text-xs font-medium text-gray-400">{KIND_LABEL[entry.kind]}</span>
+        <div className="w-20 h-14 rounded-[10px] bg-surface-3 flex items-center justify-center flex-shrink-0">
+          <span className="text-xs font-medium text-text-3">{KIND_LABEL[entry.kind]}</span>
         </div>
       )}
 
       <div className="flex-1 min-w-0">
-        <div className="flex items-center gap-2 mb-1 flex-wrap">
-          <span className="text-xs font-medium text-gray-500 bg-gray-100 rounded px-1.5 py-0.5">
-            {KIND_LABEL[entry.kind]}
-          </span>
-          {entry.platform && <span className="text-xs text-gray-400">{entry.platform}</span>}
-          {entry.status === "failed" && (
-            <span className="text-xs font-medium text-red-600 bg-red-50 rounded px-1.5 py-0.5">Failed</span>
-          )}
+        <div className="flex items-center gap-2 mb-1.5 flex-wrap">
+          <span className={CHIP}>{KIND_LABEL[entry.kind]}</span>
+          {entry.platform && <span className="text-xs text-text-3">{entry.platform}</span>}
+          {entry.status === "failed" && <span className={CHIP_DANGER}>Failed</span>}
         </div>
 
         {renaming ? (
@@ -91,51 +87,51 @@ export default function LibraryRow({
                 if (e.key === "Enter") submitRename();
                 if (e.key === "Escape") setRenaming(false);
               }}
-              className="text-sm rounded-md border border-gray-300 px-2 py-1 flex-1 min-w-0"
+              className="text-sm rounded-[8px] border border-line-2 px-2 py-1 flex-1 min-w-0 focus:outline-none focus:border-accent focus:ring-2 focus:ring-accent-soft"
             />
-            <button onClick={submitRename} className="text-sm text-blue-600 hover:underline flex-shrink-0">
+            <button onClick={submitRename} className="text-sm text-accent hover:text-text transition-colors flex-shrink-0">
               Save
             </button>
-            <button onClick={() => setRenaming(false)} className="text-sm text-gray-400 flex-shrink-0">
+            <button onClick={() => setRenaming(false)} className="text-sm text-text-3 flex-shrink-0">
               Cancel
             </button>
           </div>
         ) : (
-          <p className="text-sm font-medium text-gray-900 truncate" title={entry.fileName}>
+          <p className="text-[15px] font-medium text-text truncate" title={entry.fileName}>
             {entry.title || entry.fileName}
           </p>
         )}
 
-        <p className="text-xs text-gray-400 mt-0.5 truncate" title={entry.filePath}>
+        <p className="text-xs text-text-3 font-mono mt-0.5 truncate" title={entry.filePath}>
           {formatDate(entry.updatedAt)}
           {entry.sizeBytes ? ` · ${formatBytes(entry.sizeBytes)}` : ""}
           {entry.durationSeconds ? ` · ${formatDuration(entry.durationSeconds)}` : ""}
         </p>
 
         {entry.status === "failed" && entry.error && (
-          <p className="text-xs text-red-600 mt-1 truncate" title={entry.error}>
+          <p className="text-xs text-danger mt-1 truncate" title={entry.error}>
             {entry.error}
           </p>
         )}
 
         {!renaming && (
-          <div className="flex items-center gap-3 mt-2 flex-wrap">
+          <div className="flex items-center gap-1 mt-1.5 -ml-2 flex-wrap">
             {entry.filePath && (
               <>
-                <button onClick={onOpenFile} className={ACTION_BUTTON}>
+                <button onClick={onOpenFile} className={`${LINK_MUTED} px-2 py-1 rounded-[7px] hover:bg-black/[.04]`}>
                   Open
                 </button>
-                <button onClick={onOpenFolder} className={ACTION_BUTTON}>
+                <button onClick={onOpenFolder} className={`${LINK_MUTED} px-2 py-1 rounded-[7px] hover:bg-black/[.04]`}>
                   Open folder
                 </button>
-                <button onClick={onCopyPath} className={ACTION_BUTTON}>
+                <button onClick={onCopyPath} className={`${LINK_MUTED} px-2 py-1 rounded-[7px] hover:bg-black/[.04]`}>
                   Copy path
                 </button>
-                <button onClick={() => setRenaming(true)} className={ACTION_BUTTON}>
+                <button onClick={() => setRenaming(true)} className={`${LINK_MUTED} px-2 py-1 rounded-[7px] hover:bg-black/[.04]`}>
                   Rename
                 </button>
                 {entry.kind === "video" && entry.status === "completed" && (
-                  <button onClick={onTranscribe} className={ACTION_BUTTON}>
+                  <button onClick={onTranscribe} className={`${LINK_MUTED} px-2 py-1 rounded-[7px] hover:bg-black/[.04]`}>
                     Transcribe
                   </button>
                 )}
@@ -143,22 +139,22 @@ export default function LibraryRow({
             )}
 
             {confirmingDelete ? (
-              <span className="flex items-center gap-2 text-sm">
-                <span className="text-gray-500">Delete:</span>
+              <span className="flex items-center gap-2 text-sm px-2">
+                <span className="text-text-3">Delete:</span>
                 {entry.filePath && (
-                  <button onClick={() => onDelete(true)} className="text-red-600 hover:underline">
+                  <button onClick={() => onDelete(true)} className={LINK_DANGER}>
                     Move file to Trash
                   </button>
                 )}
-                <button onClick={() => onDelete(false)} className="text-gray-500 hover:underline">
+                <button onClick={() => onDelete(false)} className={LINK_MUTED}>
                   Remove record only
                 </button>
-                <button onClick={() => setConfirmingDelete(false)} className="text-gray-400">
+                <button onClick={() => setConfirmingDelete(false)} className="text-text-3">
                   Cancel
                 </button>
               </span>
             ) : (
-              <button onClick={() => setConfirmingDelete(true)} className={`${ACTION_BUTTON} text-red-600 hover:text-red-800`}>
+              <button onClick={() => setConfirmingDelete(true)} className={`${LINK_DANGER} px-2 py-1 rounded-[7px] hover:bg-danger-soft`}>
                 Delete
               </button>
             )}
